@@ -1,15 +1,35 @@
 import React from 'react'
 import './globalStyles.css'
+
+// Import images
 import topLogo from './allMedia/logos/topLogo.png'
+import operacionesIcon from './allMedia/icons/operaciones.png'
+import consultasIcon from './allMedia/icons/consultas.png'
+import procesosIcon from './allMedia/icons/procesos.png'
+import reportesIcon from './allMedia/icons/reportes.png'
+// import estadisticasIcon ...
+// import configuracionIcon ...
 
 export const Navbar = () => {
   return (
     <nav className="navbar">
       <div className="navbar__section navbar__section--left">
-        <button className="navbar__button" type="button">Operaciones</button>
-        <button className="navbar__button" type="button">Consultas</button>
-        <button className="navbar__button" type="button">Procesos</button>
-        <button className="navbar__button" type="button">Reportes</button>
+        <button className="navbar__button" type="button">
+          <img className="navbar__button-icon" src={operacionesIcon} alt="" aria-hidden="true" />
+          Operaciones
+        </button>
+        <button className="navbar__button" type="button">
+          <img className="navbar__button-icon" src={consultasIcon} alt="" aria-hidden="true" />
+          Consultas
+        </button>
+        <button className="navbar__button" type="button">
+          <img className="navbar__button-icon" src={procesosIcon} alt="" aria-hidden="true" />
+          Procesos
+        </button>
+        <button className="navbar__button" type="button">
+          <img className="navbar__button-icon" src={reportesIcon} alt="" aria-hidden="true" />
+          Reportes
+        </button>
         <button className="navbar__button" type="button">Estadísticas</button>
         <button className="navbar__button" type="button">Configuración</button>
       </div>
