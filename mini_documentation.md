@@ -1,0 +1,1 @@
+# Short documentation for this specific POS app.
