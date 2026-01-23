@@ -1,6 +1,6 @@
 import React from 'react'
 import { Route, Routes, BrowserRouter } from 'react-router-dom'
-import { Dashito } from '../components/dashito'
+import { Dashito, DashHome } from '../components/dashito'
 import { MenuOperaciones } from '../components/operaciones/menuOperaciones'
 import { Consultas } from '../components/menuConsultas/consultas'
 import { Procesos } from '../components/menuProcesos/procesos'
@@ -12,13 +12,15 @@ export const MainRouter = () => {
   return (
     <BrowserRouter>
         <Routes>
-            <Route path='/' element={<Dashito/>}/>
-            <Route path='/menuOperaciones' element={<MenuOperaciones/>}/>
-            <Route path='/menuConsultas' element={<Consultas/>}/>
-            <Route path='/menuProcesos' element={<Procesos/>}/>
-            <Route path='/menuReportes' element={<Reportes/>}/>
-            <Route path='/menuEstadisticas' element={<Estadisticas/>}/>
-            <Route path='/menuConfiguracion' element={<Configuracion/>}/>
+            <Route path='/' element={<Dashito/>}>
+                <Route index element={<DashHome/>} />
+                <Route path='menuOperaciones' element={<MenuOperaciones/>}/>
+                <Route path='menuConsultas' element={<Consultas/>}/>
+                <Route path='menuProcesos' element={<Procesos/>}/>
+                <Route path='menuReportes' element={<Reportes/>}/>
+                <Route path='menuEstadisticas' element={<Estadisticas/>}/>
+                <Route path='menuConfiguracion' element={<Configuracion/>}/>
+            </Route>
         </Routes>
     </BrowserRouter>
   )
