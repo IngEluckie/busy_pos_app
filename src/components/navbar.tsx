@@ -7,8 +7,8 @@ import operacionesIcon from './allMedia/icons/operaciones.png'
 import consultasIcon from './allMedia/icons/consultas.png'
 import procesosIcon from './allMedia/icons/procesos.png'
 import reportesIcon from './allMedia/icons/reportes.png'
-// import estadisticasIcon ...
-// import configuracionIcon ...
+import estadisticasIcon from './allMedia/icons/estadisticas.png'
+import configuracionIcon from './allMedia/icons/configuracion.png'
 
 export const Navbar = () => {
   return (
@@ -30,8 +30,14 @@ export const Navbar = () => {
           <img className="navbar__button-icon" src={reportesIcon} alt="" aria-hidden="true" />
           Reportes
         </button>
-        <button className="navbar__button" type="button">Estadísticas</button>
-        <button className="navbar__button" type="button">Configuración</button>
+        <button className="navbar__button" type="button">
+          <img className="navbar__button-icon" src={estadisticasIcon} alt="" aria-hidden="true" />
+          Estadísticas
+        </button>
+        <button className="navbar__button" type="button">
+          <img className="navbar__button-icon" src={configuracionIcon} alt="" aria-hidden="true" />
+          Configuración
+        </button>
       </div>
       <div className="navbar__section navbar__section--center">
         <a className="navbar__logo-link" href="/">
