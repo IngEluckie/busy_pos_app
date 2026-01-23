@@ -1,4 +1,5 @@
 import React from 'react'
+import { Link } from 'react-router-dom'
 import './globalStyles.css'
 
 // Import images
@@ -14,30 +15,30 @@ export const Navbar = () => {
   return (
     <nav className="navbar">
       <div className="navbar__section navbar__section--left">
-        <button className="navbar__button" type="button">
+        <Link className="navbar__button" to="/menuOperaciones">
           <img className="navbar__button-icon" src={operacionesIcon} alt="" aria-hidden="true" />
           Operaciones
-        </button>
-        <button className="navbar__button" type="button">
+        </Link>
+        <Link className="navbar__button" to="/menuConsultas">
           <img className="navbar__button-icon" src={consultasIcon} alt="" aria-hidden="true" />
           Consultas
-        </button>
-        <button className="navbar__button" type="button">
+        </Link>
+        <Link className="navbar__button" to="/menuProcesos">
           <img className="navbar__button-icon" src={procesosIcon} alt="" aria-hidden="true" />
           Procesos
-        </button>
-        <button className="navbar__button" type="button">
+        </Link>
+        <Link className="navbar__button" to="/menuReportes">
           <img className="navbar__button-icon" src={reportesIcon} alt="" aria-hidden="true" />
           Reportes
-        </button>
-        <button className="navbar__button" type="button">
+        </Link>
+        <Link className="navbar__button" to="/menuEstadisticas">
           <img className="navbar__button-icon" src={estadisticasIcon} alt="" aria-hidden="true" />
           Estadísticas
-        </button>
-        <button className="navbar__button" type="button">
+        </Link>
+        <Link className="navbar__button" to="/menuConfiguracion">
           <img className="navbar__button-icon" src={configuracionIcon} alt="" aria-hidden="true" />
           Configuración
-        </button>
+        </Link>
       </div>
       <div className="navbar__section navbar__section--center">
         <a className="navbar__logo-link" href="/">
