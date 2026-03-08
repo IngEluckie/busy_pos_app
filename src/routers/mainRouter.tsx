@@ -4,6 +4,9 @@ import { Dashito, DashHome } from '../components/dashito'
 
 import { MenuOperaciones } from '../components/operaciones/menuOperaciones'
 import { InterfazVentas } from '../components/operaciones/ventas/interfazVentas'
+import { CorteCaja } from '../components/operaciones/corteCaja/corteCaja'
+import { Articulos } from '../components/operaciones/articulos/articulos'
+import { Clientes } from '../components/operaciones/clientes/clientes'
 
 import { Consultas } from '../components/menuConsultas/consultas'
 import { Procesos } from '../components/menuProcesos/procesos'
@@ -19,6 +22,9 @@ export const MainRouter = () => {
                 <Route index element={<DashHome/>} />
                 <Route path='menuOperaciones' element={<MenuOperaciones/>} />
                 <Route path='menuOperaciones/ventas' element={<InterfazVentas/>} />
+                <Route path='menuOperaciones/corteCaja' element={<CorteCaja/>} />
+                <Route path='menuOperaciones/articulos' element={<Articulos/>} />
+                <Route path='menuOperaciones/clientes' element={<Clientes/>} />
 
                 <Route path='menuConsultas' element={<Consultas/>}/>
                 <Route path='menuProcesos' element={<Procesos/>}/>
