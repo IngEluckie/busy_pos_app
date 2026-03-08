@@ -1,7 +1,10 @@
 import React from 'react'
 import { Route, Routes, BrowserRouter } from 'react-router-dom'
 import { Dashito, DashHome } from '../components/dashito'
+
 import { MenuOperaciones } from '../components/operaciones/menuOperaciones'
+import { InterfazVentas } from '../components/operaciones/ventas/interfazVentas'
+
 import { Consultas } from '../components/menuConsultas/consultas'
 import { Procesos } from '../components/menuProcesos/procesos'
 import { Reportes } from '../components/menuReportes/reportes'
@@ -14,7 +17,9 @@ export const MainRouter = () => {
         <Routes>
             <Route path='/' element={<Dashito/>}>
                 <Route index element={<DashHome/>} />
-                <Route path='menuOperaciones' element={<MenuOperaciones/>}/>
+                <Route path='menuOperaciones' element={<MenuOperaciones/>} />
+                <Route path='menuOperaciones/ventas' element={<InterfazVentas/>} />
+
                 <Route path='menuConsultas' element={<Consultas/>}/>
                 <Route path='menuProcesos' element={<Procesos/>}/>
                 <Route path='menuReportes' element={<Reportes/>}/>
