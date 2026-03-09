@@ -19,9 +19,15 @@ export const Consultas = () => {
     imageUrl: '',
     route: '',
   },
-  {
+  /* {
     id: 'devoluciones',
     nombre: 'Devoluciones',
+    imageUrl: '',
+    route: '',
+  }, */
+  {
+    id: 'traspasos_ent',
+    nombre: 'Traspasos Ent',
     imageUrl: '',
     route: '',
   },
@@ -31,21 +37,15 @@ export const Consultas = () => {
     imageUrl: '',
     route: '',
   },
-  {
+  /* {
     id: 'compras',
     nombre: 'Compras',
     imageUrl: '',
     route: '',
-  },
+  }, */
   {
     id: 'notas_credito',
     nombre: 'Notas de Crédito',
-    imageUrl: '',
-    route: '',
-  },
-  {
-    id: 'traspasos_ent',
-    nombre: 'Traspasos Ent',
     imageUrl: '',
     route: '',
   },
@@ -55,49 +55,49 @@ export const Consultas = () => {
     imageUrl: '',
     route: '',
   },
-  {
+  /* {
     id: 'proveedores',
     nombre: 'Proveedores',
     imageUrl: '',
     route: '',
-  },
-  {
+  }, */
+  /* {
     id: 'pagos_cfdi',
     nombre: 'Pagos CFDI',
     imageUrl: '',
     route: '',
-  },
+  }, */
   {
     id: 'traspasos',
     nombre: 'Traspasos',
     imageUrl: '',
     route: '',
   },
-  {
+  /* {
     id: 'cancelacion',
     nombre: 'Cancelación',
     imageUrl: '',
     route: '',
-  },
+  }, */
   {
     id: 'movimientos',
     nombre: 'Movimientos',
     imageUrl: '',
     route: '',
   },
-  {
+  /* {
     id: 'estado',
     nombre: 'Estado',
     imageUrl: '',
     route: '',
-  },
+  }, */
   {
     id: 'cortes_caja',
     nombre: 'Cortes de Caja',
     imageUrl: '',
     route: '',
   },
-  {
+  /* {
     id: 'pedidos',
     nombre: 'Pedidos',
     imageUrl: '',
@@ -120,14 +120,14 @@ export const Consultas = () => {
     nombre: 'Producción',
     imageUrl: '',
     route: '',
-  },
+  }, */
   {
     id: 'checador',
     nombre: 'Checador',
     imageUrl: '',
     route: '',
   },
-  {
+  /* {
     id: 'inv_inicial',
     nombre: 'Inv. Inicial',
     imageUrl: '',
@@ -144,7 +144,7 @@ export const Consultas = () => {
     nombre: 'Lotes',
     imageUrl: '',
     route: '',
-  },
+  }, */
   {
     id: 'articulos',
     nombre: 'Artículos',

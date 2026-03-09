@@ -20,30 +20,12 @@ export const MenuOperaciones = () => {
       imageUrl: '/logo192.png',
       route: '/menuOperaciones/ventas',
     },
-    {
+    /* {
       id: 'devoluciones',
       nombre: 'Devoluciones',
       imageUrl: '/logo192.png',
       route: '/menuOperaciones/devoluciones',
-    },
-    {
-      id: 'traspasos-salidas',
-      nombre: 'Traspasos Sal',
-      imageUrl: '/logo192.png',
-      route: '/menuOperaciones/traspasos-salidas',
-    },
-    {
-      id: 'compras',
-      nombre: 'Compras',
-      imageUrl: '/logo192.png',
-      route: '/menuOperaciones/compras',
-    },
-    {
-      id: 'nota-credito',
-      nombre: 'Nota de crédito',
-      imageUrl: '/logo192.png',
-      route: '/menuOperaciones/nota-credito',
-    },
+    }, */
     {
       id: 'traspasos-entradas',
       nombre: 'Traspasos Ent',
@@ -51,30 +33,48 @@ export const MenuOperaciones = () => {
       route: '/menuOperaciones/traspasos-entradas',
     },
     {
+      id: 'traspasos-salidas',
+      nombre: 'Traspasos Sal',
+      imageUrl: '/logo192.png',
+      route: '/menuOperaciones/traspasos-salidas',
+    },
+    /* {
+      id: 'compras',
+      nombre: 'Compras',
+      imageUrl: '/logo192.png',
+      route: '/menuOperaciones/compras',
+    }, */
+    {
+      id: 'nota-credito',
+      nombre: 'Nota de crédito',
+      imageUrl: '/logo192.png',
+      route: '/menuOperaciones/nota-credito',
+    },
+    {
       id: 'factura',
       nombre: 'Factura',
       imageUrl: '/logo192.png',
       route: '/menuOperaciones/factura',
     },
-    {
+    /* {
       id: 'factura-cfdi',
       nombre: 'Factura CFDI',
       imageUrl: '/logo192.png',
       route: '/menuOperaciones/factura-cfdi',
-    },
-    {
+    }, */
+    /* {
       id: 'cotizacion',
       nombre: 'Cotización',
       imageUrl: '/logo192.png',
       route: '/menuOperaciones/cotizacion',
-    },
-    {
+    }, */
+    /* {
       id: 'pedidos',
       nombre: 'Pedidos',
       imageUrl: '/logo192.png',
       route: '/menuOperaciones/pedidos',
-    },
-    {
+    }, */
+    /* {
       id: 'cfdi-traslado',
       nombre: 'CFDI Traslado',
       imageUrl: '/logo192.png',
@@ -91,7 +91,7 @@ export const MenuOperaciones = () => {
       nombre: 'Cocina',
       imageUrl: '/logo192.png',
       route: '/menuOperaciones/cocina',
-    },
+    }, */
     {
       id: 'traspasos-solicitudes',
       nombre: 'Traspasos (solicitudes)',
@@ -111,13 +111,13 @@ export const MenuOperaciones = () => {
       route: '/menuOperaciones/articulos',
       privilegeLevel: 3,
     },
-    {
+    /* {
       id: 'paquetes',
       nombre: 'Paquetes',
       imageUrl: '/logo192.png',
       route: '/menuOperaciones/paquetes',
-    },
-    {
+    }, */
+    /* {
       id: 'insumos',
       nombre: 'Insumos',
       imageUrl: '/logo192.png',
@@ -134,26 +134,26 @@ export const MenuOperaciones = () => {
       nombre: 'Combos',
       imageUrl: '/logo192.png',
       route: '/menuOperaciones/combos',
-    },
+    }, */
     {
       id: 'clientes',
       nombre: 'Clientes',
       imageUrl: '/logo192.png',
       route: '/menuOperaciones/clientes',
     },
-    {
+    /* {
       id: 'proveedores',
       nombre: 'Proveedores',
       imageUrl: '/logo192.png',
       route: '/menuOperaciones/proveedores',
-    },
-    {
+    }, */
+    /* {
       id: 'prearticulos',
       nombre: 'Preartículos',
       imageUrl: '/logo192.png',
       route: '/menuOperaciones/prearticulos',
-    },
-    {
+    }, */
+    /* {
       id: 'inventario-inicial',
       nombre: 'Inv. Inicial',
       imageUrl: '/logo192.png',
@@ -176,7 +176,7 @@ export const MenuOperaciones = () => {
       nombre: 'Inv. en Ruta',
       imageUrl: '/logo192.png',
       route: '/menuOperaciones/inv-en-ruta',
-    },
+    }, */
   ]
 
   const visibleButtons = menuOperacionesButtons.filter((button) => {
