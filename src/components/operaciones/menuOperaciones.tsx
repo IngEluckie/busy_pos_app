@@ -102,7 +102,7 @@ export const MenuOperaciones = () => {
       id: 'corte-caja',
       nombre: 'Corte de Caja',
       imageUrl: '/logo192.png',
-      route: '/menuOperaciones/corte-caja',
+      route: '/menuOperaciones/corteCaja',
     },
     {
       id: 'articulos',
