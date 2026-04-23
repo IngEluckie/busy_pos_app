@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
 //import App from './App';
+import { SessionProvider } from './context/SessionContext';
 import { MainRouter } from './routers/mainRouter';
 //import reportWebVitals from './reportWebVitals';
 
@@ -10,7 +11,9 @@ const root = ReactDOM.createRoot(
 );
 root.render(
   <React.StrictMode>
-    <MainRouter />
+    <SessionProvider>
+      <MainRouter />
+    </SessionProvider>
   </React.StrictMode>
 );
 

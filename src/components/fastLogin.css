@@ -1,0 +1,81 @@
+.fast-login {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.fast-login__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fast-login__label {
+  color: #1b2a36;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.fast-login__input {
+  min-height: 42px;
+  border: 1px solid #bfccd6;
+  border-radius: 8px;
+  padding: 0 12px;
+  color: #172631;
+  font: inherit;
+  background: #ffffff;
+}
+
+.fast-login__input:focus {
+  border-color: #3f7ea3;
+  outline: 2px solid rgba(63, 126, 163, 0.18);
+}
+
+.fast-login__input:disabled {
+  background: #f2f5f7;
+  color: #7b8c98;
+}
+
+.fast-login__error {
+  margin: 0;
+  border: 1px solid #efb8b8;
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #8b1e1e;
+  background: #fff3f3;
+  font-size: 13px;
+}
+
+.fast-login__server {
+  margin: 0;
+  color: #667987;
+  font-size: 12px;
+}
+
+.fast-login__button {
+  min-height: 44px;
+  border: 1px solid #284f67;
+  border-radius: 8px;
+  background: #2e5f7c;
+  color: #ffffff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease, transform 120ms ease;
+}
+
+.fast-login__button:hover:not(:disabled) {
+  background: #244c63;
+  border-color: #1e4054;
+  transform: translateY(-1px);
+}
+
+.fast-login__button:focus-visible {
+  outline: 2px solid #6fa6c4;
+  outline-offset: 2px;
+}
+
+.fast-login__button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}

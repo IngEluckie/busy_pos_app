@@ -304,6 +304,69 @@
   padding-bottom: 16px;
 }
 
+.articulos-ui__action-modal {
+  display: grid;
+  gap: 16px;
+}
+
+.articulos-ui__action-modal-icon {
+  width: 64px;
+  height: 64px;
+  border: 1px solid #cdd8e1;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  font-size: 30px;
+  color: #195c90;
+  background: linear-gradient(180deg, #f8fbfd 0%, #edf4f8 100%);
+}
+
+.articulos-ui__action-modal-copy {
+  display: grid;
+  gap: 8px;
+}
+
+.articulos-ui__action-modal-text,
+.articulos-ui__action-modal-shortcut {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: #304552;
+}
+
+.articulos-ui__action-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.articulos-ui__action-modal-button {
+  appearance: none;
+  border: 1px solid #c0ccd6;
+  border-radius: 10px;
+  min-width: 104px;
+  padding: 10px 14px;
+  background: #fff;
+  color: #284255;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.articulos-ui__action-modal-button:hover {
+  background: #f4f7fa;
+}
+
+.articulos-ui__action-modal-button--primary {
+  border-color: #2e79ab;
+  background: #2e79ab;
+  color: #fff;
+}
+
+.articulos-ui__action-modal-button--primary:hover {
+  background: #256891;
+}
+
 @media (max-width: 1480px) {
   .articulos-ui__preview-placeholder {
     min-height: 170px;

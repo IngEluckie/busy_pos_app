@@ -1,11 +1,17 @@
-import React from 'react'
+import React, { useState } from 'react'
 import './style.css'
+import { Modal } from '../../ventanaModal/modal'
 
 type ActionButton = {
   id: string
   label: string
   shortcut: string
   icon: string
+}
+
+type ActionModalContent = {
+  title: string
+  description: string
 }
 
 type ResultColumn = {
@@ -26,6 +32,41 @@ const topActions: ActionButton[] = [
   { id: 'imprimir', label: 'Imp.', shortcut: '(Ctrl + P)', icon: '▥' },
 ]
 
+const actionModalContent: Record<ActionButton['id'], ActionModalContent> = {
+  agregar: {
+    title: 'Agregar artículo',
+    description: 'Aquí podrás capturar la información de un nuevo artículo y registrarlo en el catálogo.'
+  },
+  editar: {
+    title: 'Editar artículo',
+    description: 'Aquí podrás modificar la información del artículo seleccionado.'
+  },
+  recargar: {
+    title: 'Recargar artículos',
+    description: 'Aquí podrás refrescar la información cargada en la interfaz de artículos.'
+  },
+  eliminar: {
+    title: 'Eliminar artículo',
+    description: 'Aquí podrás confirmar la baja del artículo seleccionado del catálogo.'
+  },
+  ajustar: {
+    title: 'Ajustar existencias',
+    description: 'Aquí podrás registrar ajustes de inventario para el artículo seleccionado.'
+  },
+  clonar: {
+    title: 'Clonar artículo',
+    description: 'Aquí podrás duplicar la configuración del artículo seleccionado para crear uno nuevo.'
+  },
+  nubexis: {
+    title: 'Sincronizar con NubExis',
+    description: 'Aquí podrás revisar y ejecutar acciones relacionadas con la integración de NubExis.'
+  },
+  imprimir: {
+    title: 'Imprimir artículo',
+    description: 'Aquí podrás preparar la impresión de etiquetas, fichas o reportes del artículo seleccionado.'
+  }
+}
+
 const resultColumns: ResultColumn[] = [
   { id: 'clave', label: 'Clave/Descripción', className: 'articulos-ui__results-cell--description' },
   { id: 'existencias', label: 'Exist.', className: 'articulos-ui__results-cell--stock' },
@@ -38,11 +79,26 @@ const resultColumns: ResultColumn[] = [
 ]
 
 export const Articulos = () => {
+  const [openActionId, setOpenActionId] = useState<ActionButton['id'] | null>(null)
+
+  const handleOpenActionModal = (actionId: ActionButton['id']) => {
+    setOpenActionId(actionId)
+  }
+
+  const handleCloseActionModal = () => {
+    setOpenActionId(null)
+  }
+
   return (
     <section className='articulos-ui'>
       <header className='articulos-ui__topbar'>
         {topActions.map((action) => (
-          <button key={action.id} className='articulos-ui__top-action' type='button'>
+          <button
+            key={action.id}
+            className='articulos-ui__top-action'
+            onClick={() => handleOpenActionModal(action.id)}
+            type='button'
+          >
             <span className='articulos-ui__top-icon' aria-hidden='true'>
               {action.icon}
             </span>
@@ -127,6 +183,49 @@ export const Articulos = () => {
           </aside>
         </div>
       </div>
+
+      {topActions.map((action) => {
+        const modalContent = actionModalContent[action.id]
+
+        return (
+          <Modal
+            key={action.id}
+            isOpen={openActionId === action.id}
+            onClose={handleCloseActionModal}
+            title={modalContent.title}
+            width='min(92vw, 520px)'
+          >
+            <div className='articulos-ui__action-modal'>
+              <div className='articulos-ui__action-modal-icon' aria-hidden='true'>
+                {action.icon}
+              </div>
+              <div className='articulos-ui__action-modal-copy'>
+                <p className='articulos-ui__action-modal-text'>{modalContent.description}</p>
+                <p className='articulos-ui__action-modal-shortcut'>
+                  Acceso rápido: <strong>{action.shortcut}</strong>
+                </p>
+              </div>
+
+              <div className='articulos-ui__action-modal-actions'>
+                <button
+                  className='articulos-ui__action-modal-button articulos-ui__action-modal-button--primary'
+                  onClick={handleCloseActionModal}
+                  type='button'
+                >
+                  Continuar
+                </button>
+                <button
+                  className='articulos-ui__action-modal-button'
+                  onClick={handleCloseActionModal}
+                  type='button'
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </Modal>
+        )
+      })}
     </section>
   )
 }
