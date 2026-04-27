@@ -1,9 +1,9 @@
 import React from 'react'
 import { Link } from 'react-router-dom'
 import './globalStyles.css'
+import { useSession } from '../context/SessionContext'
 
 // Import images
-import topLogo from './allMedia/logos/topLogo.png'
 import operacionesIcon from './allMedia/icons/operaciones.png'
 import consultasIcon from './allMedia/icons/consultas.png'
 import procesosIcon from './allMedia/icons/procesos.png'
@@ -12,6 +12,9 @@ import estadisticasIcon from './allMedia/icons/estadisticas.png'
 import configuracionIcon from './allMedia/icons/configuracion.png'
 
 export const Navbar = () => {
+  const { user } = useSession()
+  const usernameLabel = user?.username || user?.fullname || 'Usuario'
+
   return (
     <nav className="navbar">
       <div className="navbar__section navbar__section--left">
@@ -62,7 +65,7 @@ export const Navbar = () => {
             </div>
             <div className="navbar__panel-item">
               <div className="navbar__panel-icon" aria-hidden="true">👤</div>
-              <span className="navbar__panel-text">Username</span>
+              <span className="navbar__panel-text">{usernameLabel}</span>
             </div>
           </div>
         </div>
