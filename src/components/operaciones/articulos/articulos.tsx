@@ -21,6 +21,8 @@ type ResultColumn = {
   className?: string
 }
 
+type ProductTab = 'general' | 'inventario' | 'atributos'
+
 const topActions: ActionButton[] = [
   { id: 'agregar', label: 'Agregar', shortcut: '(F3)', icon: '➕' },
   { id: 'editar', label: 'Editar', shortcut: '(F4)', icon: '✏️' },
@@ -78,8 +80,19 @@ const resultColumns: ResultColumn[] = [
   { id: 'layout', icon: '▧', className: 'articulos-ui__results-cell--icon' },
 ]
 
+const productTabs: Array<{ id: ProductTab; label: string }> = [
+  { id: 'general', label: 'General' },
+  { id: 'inventario', label: 'Inventario' },
+  { id: 'atributos', label: 'Atributos' },
+]
+
+const productTypeOptions = ['Producto simple', 'Producto compuesto', 'Servicio']
+
 export const Articulos = () => {
   const [openActionId, setOpenActionId] = useState<ActionButton['id'] | null>(null)
+  const [activeProductTab, setActiveProductTab] = useState<ProductTab>('general')
+  const [productType, setProductType] = useState(productTypeOptions[0])
+  const [trackInventory, setTrackInventory] = useState(true)
 
   const handleOpenActionModal = (actionId: ActionButton['id']) => {
     setOpenActionId(actionId)
@@ -186,6 +199,281 @@ export const Articulos = () => {
 
       {topActions.map((action) => {
         const modalContent = actionModalContent[action.id]
+
+        if (action.id === 'agregar') {
+          return (
+            <Modal
+              key={action.id}
+              isOpen={openActionId === action.id}
+              onClose={handleCloseActionModal}
+              width='calc(100vw - 40px)'
+              maxWidth='calc(100vw - 40px)'
+              height='calc(100vh - 40px)'
+              showCloseButton={false}
+              className='articulos-ui__product-modal-shell'
+              bodyClassName='articulos-ui__product-modal-body'
+            >
+              <div className='articulos-ui__product-modal'>
+                <header className='articulos-ui__product-modal-header'>
+                  <div className='articulos-ui__product-modal-title-row'>
+                    <h2 className='articulos-ui__product-modal-title'>Datos del producto -</h2>
+                    <label className='articulos-ui__product-type-label'>
+                      <span className='articulos-ui__product-type-text'>Tipo de producto</span>
+                      <select
+                        className='articulos-ui__product-type-select'
+                        value={productType}
+                        onChange={(event) => setProductType(event.target.value)}
+                      >
+                        {productTypeOptions.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  <button
+                    aria-label='Cerrar ventana modal'
+                    className='articulos-ui__product-modal-close'
+                    onClick={handleCloseActionModal}
+                    type='button'
+                  >
+                    ×
+                  </button>
+                </header>
+
+                <div className='articulos-ui__product-modal-layout'>
+                  <section className='articulos-ui__product-form-panel'>
+                    <nav className='articulos-ui__product-tabs' aria-label='Secciones del producto'>
+                      {productTabs.map((tab) => (
+                        <button
+                          key={tab.id}
+                          className={`articulos-ui__product-tab ${activeProductTab === tab.id ? 'articulos-ui__product-tab--active' : ''}`}
+                          onClick={() => setActiveProductTab(tab.id)}
+                          type='button'
+                        >
+                          {tab.label}
+                        </button>
+                      ))}
+                    </nav>
+
+                    <div className='articulos-ui__product-tab-panel'>
+                      {activeProductTab === 'general' ? (
+                        <div className='articulos-ui__product-general-grid'>
+                          <label className='articulos-ui__product-field articulos-ui__product-field--name'>
+                            <span className='articulos-ui__product-label'>Nombre del producto:</span>
+                            <input className='articulos-ui__product-input' type='text' />
+                          </label>
+
+                          <label className='articulos-ui__product-field articulos-ui__product-field--short'>
+                            <span className='articulos-ui__product-label'>Descripción corta:</span>
+                            <input className='articulos-ui__product-input' type='text' />
+                          </label>
+
+                          <label className='articulos-ui__product-field articulos-ui__product-field--large'>
+                            <span className='articulos-ui__product-label'>Descripción amplia:</span>
+                            <textarea className='articulos-ui__product-textarea' />
+                          </label>
+
+                          <div className='articulos-ui__product-price-grid'>
+                            <label className='articulos-ui__product-price-field'>
+                              <span className='articulos-ui__product-label'>Precio regular:</span>
+                              <input className='articulos-ui__product-input articulos-ui__product-input--price' type='text' inputMode='decimal' />
+                            </label>
+
+                            <label className='articulos-ui__product-price-field'>
+                              <span className='articulos-ui__product-label'>Precio rebajado:</span>
+                              <input className='articulos-ui__product-input articulos-ui__product-input--price' type='text' inputMode='decimal' />
+                            </label>
+                          </div>
+                        </div>
+                      ) : activeProductTab === 'inventario' ? (
+                        <div className='articulos-ui__inventory-form'>
+                          <label className='articulos-ui__inventory-field'>
+                            <span className='articulos-ui__inventory-label articulos-ui__inventory-label--link'>SKU</span>
+                            <input className='articulos-ui__inventory-input' type='text' />
+                            <button className='articulos-ui__inventory-help' type='button' aria-label='Ayuda sobre SKU'>
+                              ?
+                            </button>
+                          </label>
+
+                          <div className='articulos-ui__inventory-field articulos-ui__inventory-field--check'>
+                            <span className='articulos-ui__inventory-label'>Gestión de inventario</span>
+                            <label className='articulos-ui__inventory-check-label'>
+                              <input
+                                checked={trackInventory}
+                                className='articulos-ui__inventory-checkbox'
+                                onChange={(event) => setTrackInventory(event.target.checked)}
+                                type='checkbox'
+                              />
+                              <span>Hacer seguimiento de la cantidad de inventario de este producto</span>
+                            </label>
+                          </div>
+
+                          {trackInventory ? (
+                            <>
+                              <label className='articulos-ui__inventory-field'>
+                                <span className='articulos-ui__inventory-label'>Cantidad</span>
+                                <input className='articulos-ui__inventory-input' type='number' defaultValue='1' min='0' />
+                                <button className='articulos-ui__inventory-help' type='button' aria-label='Ayuda sobre cantidad'>
+                                  ?
+                                </button>
+                              </label>
+
+                              <fieldset className='articulos-ui__inventory-field articulos-ui__inventory-reservations'>
+                                <legend className='articulos-ui__inventory-label'>¿Permitir reservas?</legend>
+                                <div className='articulos-ui__inventory-radio-stack'>
+                                  <label className='articulos-ui__inventory-radio-label'>
+                                    <input name='inventory-reservations' type='radio' defaultChecked />
+                                    <span>No permitir</span>
+                                  </label>
+                                  <label className='articulos-ui__inventory-radio-label'>
+                                    <input name='inventory-reservations' type='radio' />
+                                    <span>Permitir</span>
+                                  </label>
+                                </div>
+                              </fieldset>
+
+                              <label className='articulos-ui__inventory-field'>
+                                <span className='articulos-ui__inventory-label'>Umbral de pocas existencias</span>
+                                <input
+                                  className='articulos-ui__inventory-input'
+                                  type='text'
+                                  placeholder='Umbral de la tienda (2)'
+                                />
+                                <button className='articulos-ui__inventory-help' type='button' aria-label='Ayuda sobre umbral de pocas existencias'>
+                                  ?
+                                </button>
+                              </label>
+                            </>
+                          ) : (
+                            <fieldset className='articulos-ui__inventory-field articulos-ui__inventory-reservations'>
+                              <legend className='articulos-ui__inventory-label'>Estado de inventario</legend>
+                              <div className='articulos-ui__inventory-radio-stack'>
+                                <label className='articulos-ui__inventory-radio-label'>
+                                  <input name='inventory-status' type='radio' defaultChecked />
+                                  <span>Hay existencias</span>
+                                </label>
+                                <label className='articulos-ui__inventory-radio-label'>
+                                  <input name='inventory-status' type='radio' />
+                                  <span>Sin existencias</span>
+                                </label>
+                                <label className='articulos-ui__inventory-radio-label'>
+                                  <input name='inventory-status' type='radio' />
+                                  <span>Se puede reservar</span>
+                                </label>
+                              </div>
+                              <button className='articulos-ui__inventory-help' type='button' aria-label='Ayuda sobre estado de inventario'>
+                                ?
+                              </button>
+                            </fieldset>
+                          )}
+                        </div>
+                      ) : (
+                        <div className='articulos-ui__attributes-form'>
+                          <header className='articulos-ui__attributes-toolbar'>
+                            <div className='articulos-ui__attributes-actions'>
+                              <button className='articulos-ui__attributes-button articulos-ui__attributes-button--primary' type='button'>
+                                Añadir nuevo
+                              </button>
+                              <button className='articulos-ui__attributes-select' type='button'>
+                                <span>Añadir existente</span>
+                                <span aria-hidden='true'>⌄</span>
+                              </button>
+                            </div>
+                            <button className='articulos-ui__attributes-link' type='button'>
+                              Ampliar / Cerrar
+                            </button>
+                          </header>
+
+                          <section className='articulos-ui__attribute-card'>
+                            <header className='articulos-ui__attribute-card-head'>
+                              <h3>Atributo nuevo</h3>
+                              <div className='articulos-ui__attribute-card-actions'>
+                                <button className='articulos-ui__attribute-delete' type='button'>
+                                  Eliminar
+                                </button>
+                                <button className='articulos-ui__attribute-icon-button' type='button' aria-label='Reordenar atributo'>
+                                  ≡
+                                </button>
+                                <button className='articulos-ui__attribute-icon-button' type='button' aria-label='Contraer atributo'>
+                                  ▴
+                                </button>
+                              </div>
+                            </header>
+
+                            <div className='articulos-ui__attribute-fields'>
+                              <div className='articulos-ui__attribute-left'>
+                                <label className='articulos-ui__attribute-field'>
+                                  <span>Nombre:</span>
+                                  <input
+                                    className='articulos-ui__attribute-input'
+                                    type='text'
+                                    placeholder='por ejemplo, la longitud o el peso'
+                                  />
+                                </label>
+
+                                <label className='articulos-ui__attribute-visible'>
+                                  <input type='checkbox' defaultChecked />
+                                  <span>Visible en la página de productos</span>
+                                </label>
+                              </div>
+
+                              <label className='articulos-ui__attribute-field articulos-ui__attribute-field--values'>
+                                <span>Valor(es):</span>
+                                <textarea
+                                  className='articulos-ui__attribute-textarea'
+                                  placeholder='Introduce un texto descriptivo. Utiliza «|» para separar los distintos valores.'
+                                />
+                              </label>
+                            </div>
+
+                            <footer className='articulos-ui__attribute-footer'>
+                              <button className='articulos-ui__attribute-save' type='button' disabled>
+                                Guardar atributos
+                              </button>
+                              <button className='articulos-ui__attributes-link' type='button'>
+                                Ampliar / Cerrar
+                              </button>
+                            </footer>
+                          </section>
+                        </div>
+                      )}
+                    </div>
+                  </section>
+
+                  <aside className='articulos-ui__product-image-panel'>
+                    <button className='articulos-ui__product-image-button' type='button'>
+                      Agregar imagen
+                    </button>
+
+                    <div className='articulos-ui__product-image-preview' aria-label='Vista previa de imagen del producto'>
+                      <span aria-hidden='true'>▥</span>
+                    </div>
+
+                    <div className='articulos-ui__product-thumbs'>
+                      <button className='articulos-ui__product-thumbs-arrow' type='button' aria-label='Imagen anterior'>
+                        ‹
+                      </button>
+                      <div className='articulos-ui__product-thumb articulos-ui__product-thumb--active' />
+                      <div className='articulos-ui__product-thumb' />
+                      <div className='articulos-ui__product-thumb' />
+                      <div className='articulos-ui__product-thumb' />
+                      <button className='articulos-ui__product-thumbs-arrow' type='button' aria-label='Imagen siguiente'>
+                        ›
+                      </button>
+                    </div>
+
+                    <button className='articulos-ui__product-save' type='button'>
+                      Guardar
+                    </button>
+                  </aside>
+                </div>
+              </div>
+            </Modal>
+          )
+        }
 
         return (
           <Modal
