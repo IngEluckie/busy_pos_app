@@ -22,6 +22,57 @@ type ResultColumn = {
 }
 
 type ProductTab = 'general' | 'inventario' | 'atributos'
+type ProductType = 'simple'
+type ProductTypeOption = 'Producto simple' | 'Producto compuesto' | 'Servicio'
+type InventoryTrackingMode = 'tracked' | 'untracked'
+type ReservationPolicy = 'disabled' | 'allowed'
+type StockStatus = 'in_stock' | 'out_of_stock' | 'backorder'
+
+type ProductAttribute = {
+  id: string
+  name: string
+  values: string[]
+  visible: boolean
+}
+
+type ProductImage = {
+  id: string
+  url: string
+  altText?: string
+  isPrimary: boolean
+  order: number
+}
+
+type SimpleProduct = {
+  id: string
+  type: ProductType
+  general: {
+    name: string
+    shortDescription: string
+    longDescription: string
+    regularPrice: number | null
+    salePrice: number | null
+  }
+  inventory: {
+    sku: string
+    trackingMode: InventoryTrackingMode
+    quantity: number | null
+    reservationPolicy: ReservationPolicy | null
+    lowStockThreshold: number | null
+    stockStatus: StockStatus
+  }
+  attributes: ProductAttribute[]
+  media: {
+    images: ProductImage[]
+  }
+  metadata: {
+    createdAt: string
+    updatedAt: string
+    isActive: boolean
+  }
+}
+
+type SimpleProductValidationErrors = Partial<Record<'name' | 'shortDescription' | 'regularPrice' | 'sku', string>>
 
 const topActions: ActionButton[] = [
   { id: 'agregar', label: 'Agregar', shortcut: '(F3)', icon: '➕' },
@@ -86,13 +137,70 @@ const productTabs: Array<{ id: ProductTab; label: string }> = [
   { id: 'atributos', label: 'Atributos' },
 ]
 
-const productTypeOptions = ['Producto simple', 'Producto compuesto', 'Servicio']
+const productTypeOptions: ProductTypeOption[] = ['Producto simple', 'Producto compuesto', 'Servicio']
+
+const createClientId = (prefix: string) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
+
+const createEmptySimpleProduct = (): SimpleProduct => {
+  const now = new Date().toISOString()
+
+  return {
+    id: createClientId('prod'),
+    type: 'simple',
+    general: {
+      name: '',
+      shortDescription: '',
+      longDescription: '',
+      regularPrice: null,
+      salePrice: null,
+    },
+    inventory: {
+      sku: '',
+      trackingMode: 'tracked',
+      quantity: 1,
+      reservationPolicy: 'disabled',
+      lowStockThreshold: 1,
+      stockStatus: 'in_stock',
+    },
+    attributes: [
+      {
+        id: createClientId('attr'),
+        name: '',
+        values: [],
+        visible: true,
+      },
+    ],
+    media: {
+      images: [],
+    },
+    metadata: {
+      createdAt: now,
+      updatedAt: now,
+      isActive: true,
+    },
+  }
+}
+
+const parseNumberInput = (value: string) => {
+  if (value.trim() === '') {
+    return null
+  }
+
+  const parsedValue = Number(value)
+
+  return Number.isNaN(parsedValue) ? null : parsedValue
+}
 
 export const Articulos = () => {
   const [openActionId, setOpenActionId] = useState<ActionButton['id'] | null>(null)
   const [activeProductTab, setActiveProductTab] = useState<ProductTab>('general')
-  const [productType, setProductType] = useState(productTypeOptions[0])
-  const [trackInventory, setTrackInventory] = useState(true)
+  const [productType, setProductType] = useState<ProductTypeOption>(productTypeOptions[0])
+  const [simpleProductDraft, setSimpleProductDraft] = useState<SimpleProduct>(() => createEmptySimpleProduct())
+  const [simpleProducts, setSimpleProducts] = useState<SimpleProduct[]>([])
+  const [simpleProductErrors, setSimpleProductErrors] = useState<SimpleProductValidationErrors>({})
+
+  const trackInventory = simpleProductDraft.inventory.trackingMode === 'tracked'
+  const primaryAttribute = simpleProductDraft.attributes[0]
 
   const handleOpenActionModal = (actionId: ActionButton['id']) => {
     setOpenActionId(actionId)
@@ -101,6 +209,207 @@ export const Articulos = () => {
   const handleCloseActionModal = () => {
     setOpenActionId(null)
   }
+
+  const clearSimpleProductErrors = (fields: Array<keyof SimpleProductValidationErrors>) => {
+    setSimpleProductErrors((currentErrors) => {
+      const nextErrors = { ...currentErrors }
+
+      fields.forEach((field) => {
+        delete nextErrors[field]
+      })
+
+      return nextErrors
+    })
+  }
+
+  const updateSimpleProductGeneral = (general: Partial<SimpleProduct['general']>) => {
+    const fieldsToClear: Array<keyof SimpleProductValidationErrors> = []
+
+    if ('name' in general) {
+      fieldsToClear.push('name')
+    }
+
+    if ('shortDescription' in general) {
+      fieldsToClear.push('shortDescription')
+    }
+
+    if ('regularPrice' in general) {
+      fieldsToClear.push('regularPrice')
+    }
+
+    if (fieldsToClear.length > 0) {
+      clearSimpleProductErrors(fieldsToClear)
+    }
+
+    setSimpleProductDraft((currentProduct) => ({
+      ...currentProduct,
+      general: {
+        ...currentProduct.general,
+        ...general,
+      },
+      metadata: {
+        ...currentProduct.metadata,
+        updatedAt: new Date().toISOString(),
+      },
+    }))
+  }
+
+  const updateSimpleProductInventory = (inventory: Partial<SimpleProduct['inventory']>) => {
+    if ('sku' in inventory) {
+      clearSimpleProductErrors(['sku'])
+    }
+
+    setSimpleProductDraft((currentProduct) => ({
+      ...currentProduct,
+      inventory: {
+        ...currentProduct.inventory,
+        ...inventory,
+      },
+      metadata: {
+        ...currentProduct.metadata,
+        updatedAt: new Date().toISOString(),
+      },
+    }))
+  }
+
+  const updatePrimaryAttribute = (attribute: Partial<ProductAttribute>) => {
+    setSimpleProductDraft((currentProduct) => ({
+      ...currentProduct,
+      attributes: currentProduct.attributes.map((currentAttribute, index) => (
+        index === 0
+          ? {
+              ...currentAttribute,
+              ...attribute,
+            }
+          : currentAttribute
+      )),
+      metadata: {
+        ...currentProduct.metadata,
+        updatedAt: new Date().toISOString(),
+      },
+    }))
+  }
+
+  const handleTrackInventoryChange = (isTracked: boolean) => {
+    updateSimpleProductInventory({
+      trackingMode: isTracked ? 'tracked' : 'untracked',
+      quantity: isTracked ? simpleProductDraft.inventory.quantity ?? 1 : null,
+      reservationPolicy: isTracked ? simpleProductDraft.inventory.reservationPolicy ?? 'disabled' : null,
+      lowStockThreshold: isTracked ? simpleProductDraft.inventory.lowStockThreshold : null,
+      stockStatus: isTracked ? 'in_stock' : simpleProductDraft.inventory.stockStatus,
+    })
+  }
+
+  const buildSimpleProductToSave = (): SimpleProduct => {
+    const now = new Date().toISOString()
+
+    return {
+      ...simpleProductDraft,
+      general: {
+        ...simpleProductDraft.general,
+        name: simpleProductDraft.general.name.trim(),
+        shortDescription: simpleProductDraft.general.shortDescription.trim(),
+        longDescription: simpleProductDraft.general.longDescription.trim(),
+      },
+      inventory: {
+        ...simpleProductDraft.inventory,
+        sku: simpleProductDraft.inventory.sku.trim(),
+      },
+      attributes: simpleProductDraft.attributes
+        .map((attribute) => ({
+          ...attribute,
+          name: attribute.name.trim(),
+          values: attribute.values.map((value) => value.trim()).filter(Boolean),
+        }))
+        .filter((attribute) => attribute.name || attribute.values.length > 0),
+      metadata: {
+        ...simpleProductDraft.metadata,
+        updatedAt: now,
+      },
+    }
+  }
+
+  const validateSimpleProductGeneral = (product: SimpleProduct) => {
+    const validationErrors: SimpleProductValidationErrors = {}
+
+    if (!product.general.name) {
+      validationErrors.name = 'El nombre del producto es obligatorio.'
+    }
+
+    if (!product.general.shortDescription) {
+      validationErrors.shortDescription = 'La descripción corta es obligatoria.'
+    }
+
+    if (product.general.regularPrice === null) {
+      validationErrors.regularPrice = 'El precio regular es obligatorio.'
+    }
+
+    return validationErrors
+  }
+
+  const validateSimpleProductInventory = (product: SimpleProduct) => {
+    const validationErrors: SimpleProductValidationErrors = {}
+
+    if (!product.inventory.sku) {
+      validationErrors.sku = 'El SKU es obligatorio.'
+    }
+
+    return validationErrors
+  }
+
+  const handleProductModalPrimaryAction = () => {
+    const productToSave = buildSimpleProductToSave()
+
+    if (activeProductTab === 'general') {
+      const validationErrors = validateSimpleProductGeneral(productToSave)
+
+      if (Object.keys(validationErrors).length > 0) {
+        setSimpleProductErrors(validationErrors)
+
+        return
+      }
+
+      clearSimpleProductErrors(['name', 'shortDescription', 'regularPrice'])
+      setActiveProductTab('inventario')
+
+      return
+    }
+
+    if (activeProductTab === 'inventario') {
+      const validationErrors = validateSimpleProductInventory(productToSave)
+
+      if (Object.keys(validationErrors).length > 0) {
+        setSimpleProductErrors(validationErrors)
+
+        return
+      }
+
+      clearSimpleProductErrors(['sku'])
+      setActiveProductTab('atributos')
+
+      return
+    }
+
+    const validationErrors = {
+      ...validateSimpleProductGeneral(productToSave),
+      ...validateSimpleProductInventory(productToSave),
+    }
+
+    if (Object.keys(validationErrors).length > 0) {
+      setSimpleProductErrors(validationErrors)
+      setActiveProductTab(validationErrors.name || validationErrors.shortDescription || validationErrors.regularPrice ? 'general' : 'inventario')
+
+      return
+    }
+
+    setSimpleProducts((currentProducts) => [...currentProducts, productToSave])
+    setSimpleProductDraft(createEmptySimpleProduct())
+    setSimpleProductErrors({})
+    setActiveProductTab('general')
+    handleCloseActionModal()
+  }
+
+  const productPrimaryActionLabel = activeProductTab === 'atributos' ? 'Guardar' : 'Siguiente'
 
   return (
     <section className='articulos-ui'>
@@ -152,7 +461,29 @@ export const Articulos = () => {
                 ))}
               </div>
               <div className='articulos-ui__results-body' role='rowgroup'>
-                <p className='articulos-ui__results-empty'>Sin coincidencias para mostrar.</p>
+                {simpleProducts.length === 0 ? (
+                  <p className='articulos-ui__results-empty'>Sin coincidencias para mostrar.</p>
+                ) : (
+                  simpleProducts.map((product) => (
+                    <div className='articulos-ui__results-row' key={product.id} role='row'>
+                      <div className='articulos-ui__results-data articulos-ui__results-cell--description' role='cell'>
+                        <strong>{product.inventory.sku || product.id}</strong>
+                        <span>{product.general.name || 'Producto sin nombre'}</span>
+                      </div>
+                      <div className='articulos-ui__results-data articulos-ui__results-cell--stock' role='cell'>
+                        {product.inventory.quantity ?? '-'}
+                      </div>
+                      <div className='articulos-ui__results-data articulos-ui__results-cell--price' role='cell'>
+                        {product.general.regularPrice !== null ? `$${product.general.regularPrice.toFixed(2)}` : '-'}
+                      </div>
+                      <div className='articulos-ui__results-data articulos-ui__results-cell--icon' role='cell'>-</div>
+                      <div className='articulos-ui__results-data articulos-ui__results-cell--icon' role='cell'>-</div>
+                      <div className='articulos-ui__results-data articulos-ui__results-cell--icon' role='cell'>-</div>
+                      <div className='articulos-ui__results-data articulos-ui__results-cell--icon' role='cell'>-</div>
+                      <div className='articulos-ui__results-data articulos-ui__results-cell--icon' role='cell'>-</div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
 
@@ -222,7 +553,7 @@ export const Articulos = () => {
                       <select
                         className='articulos-ui__product-type-select'
                         value={productType}
-                        onChange={(event) => setProductType(event.target.value)}
+                        onChange={(event) => setProductType(event.target.value as ProductTypeOption)}
                       >
                         {productTypeOptions.map((option) => (
                           <option key={option} value={option}>
@@ -263,28 +594,69 @@ export const Articulos = () => {
                         <div className='articulos-ui__product-general-grid'>
                           <label className='articulos-ui__product-field articulos-ui__product-field--name'>
                             <span className='articulos-ui__product-label'>Nombre del producto:</span>
-                            <input className='articulos-ui__product-input' type='text' />
+                            <input
+                              aria-invalid={Boolean(simpleProductErrors.name)}
+                              className='articulos-ui__product-input'
+                              onChange={(event) => updateSimpleProductGeneral({ name: event.target.value })}
+                              required
+                              type='text'
+                              value={simpleProductDraft.general.name}
+                            />
+                            {simpleProductErrors.name && (
+                              <span className='articulos-ui__product-error'>{simpleProductErrors.name}</span>
+                            )}
                           </label>
 
                           <label className='articulos-ui__product-field articulos-ui__product-field--short'>
                             <span className='articulos-ui__product-label'>Descripción corta:</span>
-                            <input className='articulos-ui__product-input' type='text' />
+                            <input
+                              aria-invalid={Boolean(simpleProductErrors.shortDescription)}
+                              className='articulos-ui__product-input'
+                              onChange={(event) => updateSimpleProductGeneral({ shortDescription: event.target.value })}
+                              required
+                              type='text'
+                              value={simpleProductDraft.general.shortDescription}
+                            />
+                            {simpleProductErrors.shortDescription && (
+                              <span className='articulos-ui__product-error'>{simpleProductErrors.shortDescription}</span>
+                            )}
                           </label>
 
                           <label className='articulos-ui__product-field articulos-ui__product-field--large'>
                             <span className='articulos-ui__product-label'>Descripción amplia:</span>
-                            <textarea className='articulos-ui__product-textarea' />
+                            <textarea
+                              className='articulos-ui__product-textarea'
+                              onChange={(event) => updateSimpleProductGeneral({ longDescription: event.target.value })}
+                              value={simpleProductDraft.general.longDescription}
+                            />
                           </label>
 
                           <div className='articulos-ui__product-price-grid'>
                             <label className='articulos-ui__product-price-field'>
                               <span className='articulos-ui__product-label'>Precio regular:</span>
-                              <input className='articulos-ui__product-input articulos-ui__product-input--price' type='text' inputMode='decimal' />
+                              <input
+                                aria-invalid={Boolean(simpleProductErrors.regularPrice)}
+                                className='articulos-ui__product-input articulos-ui__product-input--price'
+                                inputMode='decimal'
+                                onChange={(event) => updateSimpleProductGeneral({ regularPrice: parseNumberInput(event.target.value) })}
+                                required
+                                type='text'
+                                value={simpleProductDraft.general.regularPrice ?? ''}
+                              />
+                              {simpleProductErrors.regularPrice && (
+                                <span className='articulos-ui__product-error'>{simpleProductErrors.regularPrice}</span>
+                              )}
                             </label>
 
                             <label className='articulos-ui__product-price-field'>
                               <span className='articulos-ui__product-label'>Precio rebajado:</span>
-                              <input className='articulos-ui__product-input articulos-ui__product-input--price' type='text' inputMode='decimal' />
+                              <input
+                                className='articulos-ui__product-input articulos-ui__product-input--price'
+                                inputMode='decimal'
+                                onChange={(event) => updateSimpleProductGeneral({ salePrice: parseNumberInput(event.target.value) })}
+                                type='text'
+                                value={simpleProductDraft.general.salePrice ?? ''}
+                              />
                             </label>
                           </div>
                         </div>
@@ -292,10 +664,20 @@ export const Articulos = () => {
                         <div className='articulos-ui__inventory-form'>
                           <label className='articulos-ui__inventory-field'>
                             <span className='articulos-ui__inventory-label articulos-ui__inventory-label--link'>SKU</span>
-                            <input className='articulos-ui__inventory-input' type='text' />
+                            <input
+                              aria-invalid={Boolean(simpleProductErrors.sku)}
+                              className='articulos-ui__inventory-input'
+                              onChange={(event) => updateSimpleProductInventory({ sku: event.target.value })}
+                              required
+                              type='text'
+                              value={simpleProductDraft.inventory.sku}
+                            />
                             <button className='articulos-ui__inventory-help' type='button' aria-label='Ayuda sobre SKU'>
                               ?
                             </button>
+                            {simpleProductErrors.sku && (
+                              <span className='articulos-ui__inventory-error'>{simpleProductErrors.sku}</span>
+                            )}
                           </label>
 
                           <div className='articulos-ui__inventory-field articulos-ui__inventory-field--check'>
@@ -304,7 +686,7 @@ export const Articulos = () => {
                               <input
                                 checked={trackInventory}
                                 className='articulos-ui__inventory-checkbox'
-                                onChange={(event) => setTrackInventory(event.target.checked)}
+                                onChange={(event) => handleTrackInventoryChange(event.target.checked)}
                                 type='checkbox'
                               />
                               <span>Hacer seguimiento de la cantidad de inventario de este producto</span>
@@ -315,7 +697,13 @@ export const Articulos = () => {
                             <>
                               <label className='articulos-ui__inventory-field'>
                                 <span className='articulos-ui__inventory-label'>Cantidad</span>
-                                <input className='articulos-ui__inventory-input' type='number' defaultValue='1' min='0' />
+                                <input
+                                  className='articulos-ui__inventory-input'
+                                  min='0'
+                                  onChange={(event) => updateSimpleProductInventory({ quantity: parseNumberInput(event.target.value) })}
+                                  type='number'
+                                  value={simpleProductDraft.inventory.quantity ?? ''}
+                                />
                                 <button className='articulos-ui__inventory-help' type='button' aria-label='Ayuda sobre cantidad'>
                                   ?
                                 </button>
@@ -325,22 +713,33 @@ export const Articulos = () => {
                                 <legend className='articulos-ui__inventory-label'>¿Permitir reservas?</legend>
                                 <div className='articulos-ui__inventory-radio-stack'>
                                   <label className='articulos-ui__inventory-radio-label'>
-                                    <input name='inventory-reservations' type='radio' defaultChecked />
+                                    <input
+                                      checked={simpleProductDraft.inventory.reservationPolicy === 'disabled'}
+                                      name='inventory-reservations'
+                                      onChange={() => updateSimpleProductInventory({ reservationPolicy: 'disabled' })}
+                                      type='radio'
+                                    />
                                     <span>No permitir</span>
                                   </label>
                                   <label className='articulos-ui__inventory-radio-label'>
-                                    <input name='inventory-reservations' type='radio' />
+                                    <input
+                                      checked={simpleProductDraft.inventory.reservationPolicy === 'allowed'}
+                                      name='inventory-reservations'
+                                      onChange={() => updateSimpleProductInventory({ reservationPolicy: 'allowed' })}
+                                      type='radio'
+                                    />
                                     <span>Permitir</span>
                                   </label>
                                 </div>
                               </fieldset>
 
                               <label className='articulos-ui__inventory-field'>
-                                <span className='articulos-ui__inventory-label'>Umbral de pocas existencias</span>
+                                <span className='articulos-ui__inventory-label'>Umbral de pocos productos (1)</span>
                                 <input
                                   className='articulos-ui__inventory-input'
+                                  onChange={(event) => updateSimpleProductInventory({ lowStockThreshold: parseNumberInput(event.target.value) })}
                                   type='text'
-                                  placeholder='Umbral de la tienda (2)'
+                                  value={simpleProductDraft.inventory.lowStockThreshold ?? ''}
                                 />
                                 <button className='articulos-ui__inventory-help' type='button' aria-label='Ayuda sobre umbral de pocas existencias'>
                                   ?
@@ -352,15 +751,30 @@ export const Articulos = () => {
                               <legend className='articulos-ui__inventory-label'>Estado de inventario</legend>
                               <div className='articulos-ui__inventory-radio-stack'>
                                 <label className='articulos-ui__inventory-radio-label'>
-                                  <input name='inventory-status' type='radio' defaultChecked />
+                                  <input
+                                    checked={simpleProductDraft.inventory.stockStatus === 'in_stock'}
+                                    name='inventory-status'
+                                    onChange={() => updateSimpleProductInventory({ stockStatus: 'in_stock' })}
+                                    type='radio'
+                                  />
                                   <span>Hay existencias</span>
                                 </label>
                                 <label className='articulos-ui__inventory-radio-label'>
-                                  <input name='inventory-status' type='radio' />
+                                  <input
+                                    checked={simpleProductDraft.inventory.stockStatus === 'out_of_stock'}
+                                    name='inventory-status'
+                                    onChange={() => updateSimpleProductInventory({ stockStatus: 'out_of_stock' })}
+                                    type='radio'
+                                  />
                                   <span>Sin existencias</span>
                                 </label>
                                 <label className='articulos-ui__inventory-radio-label'>
-                                  <input name='inventory-status' type='radio' />
+                                  <input
+                                    checked={simpleProductDraft.inventory.stockStatus === 'backorder'}
+                                    name='inventory-status'
+                                    onChange={() => updateSimpleProductInventory({ stockStatus: 'backorder' })}
+                                    type='radio'
+                                  />
                                   <span>Se puede reservar</span>
                                 </label>
                               </div>
@@ -409,13 +823,19 @@ export const Articulos = () => {
                                   <span>Nombre:</span>
                                   <input
                                     className='articulos-ui__attribute-input'
+                                    onChange={(event) => updatePrimaryAttribute({ name: event.target.value })}
                                     type='text'
                                     placeholder='por ejemplo, la longitud o el peso'
+                                    value={primaryAttribute.name}
                                   />
                                 </label>
 
                                 <label className='articulos-ui__attribute-visible'>
-                                  <input type='checkbox' defaultChecked />
+                                  <input
+                                    checked={primaryAttribute.visible}
+                                    onChange={(event) => updatePrimaryAttribute({ visible: event.target.checked })}
+                                    type='checkbox'
+                                  />
                                   <span>Visible en la página de productos</span>
                                 </label>
                               </div>
@@ -424,7 +844,11 @@ export const Articulos = () => {
                                 <span>Valor(es):</span>
                                 <textarea
                                   className='articulos-ui__attribute-textarea'
+                                  onChange={(event) => updatePrimaryAttribute({
+                                    values: event.target.value.split('|').map((value) => value.trim()),
+                                  })}
                                   placeholder='Introduce un texto descriptivo. Utiliza «|» para separar los distintos valores.'
+                                  value={primaryAttribute.values.join(' | ')}
                                 />
                               </label>
                             </div>
@@ -465,8 +889,8 @@ export const Articulos = () => {
                       </button>
                     </div>
 
-                    <button className='articulos-ui__product-save' type='button'>
-                      Guardar
+                    <button className='articulos-ui__product-save' onClick={handleProductModalPrimaryAction} type='button'>
+                      {productPrimaryActionLabel}
                     </button>
                   </aside>
                 </div>
