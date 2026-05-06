@@ -1,5 +1,5 @@
 import React from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import './globalStyles.css'
 import { useSession } from '../context/SessionContext'
 
@@ -12,8 +12,14 @@ import estadisticasIcon from './allMedia/icons/estadisticas.png'
 import configuracionIcon from './allMedia/icons/configuracion.png'
 
 export const Navbar = () => {
-  const { user } = useSession()
+  const { user, logout } = useSession()
+  const navigate = useNavigate()
   const usernameLabel = user?.username || user?.fullname || 'Usuario'
+
+  const handleLogout = () => {
+    logout()
+    navigate('/')
+  }
 
   return (
     <nav className="navbar">
@@ -59,14 +65,14 @@ export const Navbar = () => {
               <div className="navbar__panel-icon" aria-hidden="true">!!</div>
               <span className="navbar__panel-text">Notifications</span>
             </div>
-            <div className="navbar__panel-item">
-              <div className="navbar__panel-icon" aria-hidden="true">?</div>
-              <span className="navbar__panel-text">Info</span>
-            </div>
-            <div className="navbar__panel-item">
+            <Link className="navbar__panel-item" to="/">
+              <div className="navbar__panel-icon" aria-hidden="true">📝</div>
+              <span className="navbar__panel-text">Dashboard</span>
+            </Link>
+            <button className="navbar__panel-item" type="button" onClick={handleLogout}>
               <div className="navbar__panel-icon" aria-hidden="true">👤</div>
               <span className="navbar__panel-text">{usernameLabel}</span>
-            </div>
+            </button>
           </div>
         </div>
       </div>

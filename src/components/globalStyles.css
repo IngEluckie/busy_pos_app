@@ -136,7 +136,25 @@
   flex-direction: column;
   align-items: center;
   gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: #ffffff;
+  font: inherit;
+  text-decoration: none;
+}
+
+.navbar__panel-item:is(a, button) {
+  cursor: pointer;
+}
+
+.navbar__panel-item:is(a, button):hover {
+  opacity: 0.86;
+}
+
+.navbar__panel-item:is(a, button):focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 4px;
 }
 
 .navbar__panel-icon {

@@ -40,6 +40,36 @@ export const DashHome = () => {
       imageUrl: '/logo192.png',
       route: '',
     },
+    {
+      id: 'config-ticket',
+      nombre: 'Config Ticket',
+      imageUrl: '/logo192.png',
+      route: '/menuConfiguracion',
+    },
+    {
+      id: 'in-messenger',
+      nombre: 'InMessenger',
+      imageUrl: '/logo192.png',
+      route: '',
+    },
+    {
+      id: 'system-configuration',
+      nombre: 'System Configuration',
+      imageUrl: '/logo192.png',
+      route: '/menuConfiguracion',
+    },
+    {
+      id: 'imprimir',
+      nombre: 'Imprimir',
+      imageUrl: '/logo192.png',
+      route: '',
+    },
+    {
+      id: 'node-conf',
+      nombre: 'NodeConf',
+      imageUrl: '/logo192.png',
+      route: '',
+    },
   ]
 
   const visibleButtons = dashButtons.filter((button) => {
