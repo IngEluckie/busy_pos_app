@@ -139,6 +139,7 @@ const productTabs: Array<{ id: ProductTab; label: string }> = [
 ]
 
 const productTypeOptions: ProductTypeOption[] = ['Producto simple', 'Producto compuesto', 'Servicio']
+const PRODUCTS_PER_PAGE = 20
 
 const createClientId = (prefix: string) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
 
@@ -206,17 +207,50 @@ export const Articulos = () => {
   const [productModalMode, setProductModalMode] = useState<ProductModalMode>('create')
   const [simpleProductDraft, setSimpleProductDraft] = useState<SimpleProduct>(() => createEmptySimpleProduct())
   const [simpleProducts, setSimpleProducts] = useState<SimpleProduct[]>([])
+  const [currentProductPage, setCurrentProductPage] = useState(1)
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
+  const [adjustingProductId, setAdjustingProductId] = useState<string | null>(null)
+  const [adjustmentQuantityDraft, setAdjustmentQuantityDraft] = useState('')
+  const [adjustmentError, setAdjustmentError] = useState<string | null>(null)
   const [simpleProductErrors, setSimpleProductErrors] = useState<SimpleProductValidationErrors>({})
   const [productModalError, setProductModalError] = useState<string | null>(null)
 
   const trackInventory = simpleProductDraft.inventory.trackingMode === 'tracked'
   const primaryAttribute = simpleProductDraft.attributes[0]
   const isProductModalOpen = openActionId === 'agregar' || openActionId === 'editar'
+  const totalProductPages = Math.ceil(simpleProducts.length / PRODUCTS_PER_PAGE)
+  const currentProductPageLabel = totalProductPages === 0 ? 0 : currentProductPage
+  const pageStartIndex = (currentProductPage - 1) * PRODUCTS_PER_PAGE
+  const paginatedProducts = simpleProducts.slice(pageStartIndex, pageStartIndex + PRODUCTS_PER_PAGE)
+  const canGoToPreviousProductPage = totalProductPages > 0 && currentProductPage > 1
+  const canGoToNextProductPage = totalProductPages > 0 && currentProductPage < totalProductPages
+
+  useEffect(() => {
+    if (totalProductPages === 0) {
+      if (currentProductPage !== 1) {
+        setCurrentProductPage(1)
+      }
+
+      return
+    }
+
+    if (currentProductPage > totalProductPages) {
+      setCurrentProductPage(totalProductPages)
+    }
+  }, [currentProductPage, totalProductPages])
 
   useEffect(() => {
     const handleEscapeSelection = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !openActionId && !productModalError) {
+        if (adjustingProductId) {
+          event.preventDefault()
+          setAdjustingProductId(null)
+          setAdjustmentQuantityDraft('')
+          setAdjustmentError(null)
+
+          return
+        }
+
         setSelectedProductId(null)
       }
     }
@@ -226,10 +260,75 @@ export const Articulos = () => {
     return () => {
       window.removeEventListener('keydown', handleEscapeSelection)
     }
-  }, [openActionId, productModalError])
+  }, [adjustingProductId, openActionId, productModalError])
+
+  const clearAdjustment = () => {
+    setAdjustingProductId(null)
+    setAdjustmentQuantityDraft('')
+    setAdjustmentError(null)
+  }
+
+  const startProductAdjustment = (product: SimpleProduct) => {
+    setSelectedProductId(product.id)
+    setAdjustingProductId(product.id)
+    setAdjustmentQuantityDraft(String(product.inventory.quantity ?? 0))
+    setAdjustmentError(null)
+  }
+
+  const parseAdjustmentQuantity = () => {
+    if (!/^\d+$/.test(adjustmentQuantityDraft.trim())) {
+      return null
+    }
+
+    return Number(adjustmentQuantityDraft)
+  }
+
+  const confirmProductAdjustment = () => {
+    const nextQuantity = parseAdjustmentQuantity()
+
+    if (nextQuantity === null) {
+      setAdjustmentError('Ingresa un entero mayor o igual a 0.')
+
+      return
+    }
+
+    setSimpleProducts((currentProducts) => (
+      currentProducts.map((product) => (
+        product.id === adjustingProductId
+          ? {
+              ...product,
+              inventory: {
+                ...product.inventory,
+                quantity: nextQuantity,
+              },
+              metadata: {
+                ...product.metadata,
+                updatedAt: new Date().toISOString(),
+              },
+            }
+          : product
+      ))
+    ))
+    clearAdjustment()
+  }
+
+  const decrementAdjustmentQuantity = () => {
+    const nextQuantity = Math.max(0, parseAdjustmentQuantity() ?? 0)
+
+    setAdjustmentQuantityDraft(String(Math.max(0, nextQuantity - 1)))
+    setAdjustmentError(null)
+  }
+
+  const incrementAdjustmentQuantity = () => {
+    const nextQuantity = parseAdjustmentQuantity() ?? 0
+
+    setAdjustmentQuantityDraft(String(nextQuantity + 1))
+    setAdjustmentError(null)
+  }
 
   const handleOpenActionModal = (actionId: ActionButton['id']) => {
     if (actionId === 'agregar') {
+      clearAdjustment()
       setProductModalMode('create')
       setSimpleProductDraft(createEmptySimpleProduct())
       setSimpleProductErrors({})
@@ -248,6 +347,7 @@ export const Articulos = () => {
         return
       }
 
+      clearAdjustment()
       setProductModalMode('edit')
       setSimpleProductDraft(createEditableSimpleProductDraft(selectedProduct))
       setSimpleProductErrors({})
@@ -266,10 +366,78 @@ export const Articulos = () => {
         return
       }
 
+      clearAdjustment()
       setSimpleProducts((currentProducts) => (
         currentProducts.filter((product) => product.id !== selectedProduct.id)
       ))
+      setCurrentProductPage((currentPage) => {
+        const nextTotalPages = Math.ceil((simpleProducts.length - 1) / PRODUCTS_PER_PAGE)
+
+        return Math.max(1, Math.min(currentPage, nextTotalPages || 1))
+      })
       setSelectedProductId(null)
+
+      return
+    }
+
+    if (actionId === 'ajustar') {
+      const selectedProduct = simpleProducts.find((product) => product.id === selectedProductId)
+
+      if (!selectedProduct) {
+        setProductModalError('No artículo seleccionado')
+
+        return
+      }
+
+      if (selectedProduct.inventory.trackingMode !== 'tracked') {
+        setProductModalError('El producto no maneja cantidad de inventario.')
+
+        return
+      }
+
+      startProductAdjustment(selectedProduct)
+
+      return
+    }
+
+    if (actionId === 'clonar') {
+      const selectedProduct = simpleProducts.find((product) => product.id === selectedProductId)
+
+      if (!selectedProduct) {
+        setProductModalError('No artículo seleccionado')
+
+        return
+      }
+
+      clearAdjustment()
+      const now = new Date().toISOString()
+      const clonedProduct: SimpleProduct = {
+        ...selectedProduct,
+        id: createClientId('prod'),
+        general: {
+          ...selectedProduct.general,
+          name: `${selectedProduct.general.name} (clon)`,
+        },
+        attributes: selectedProduct.attributes.map((attribute) => ({
+          ...attribute,
+          id: createClientId('attr'),
+        })),
+        media: {
+          images: selectedProduct.media.images.map((image) => ({
+            ...image,
+            id: createClientId('img'),
+          })),
+        },
+        metadata: {
+          ...selectedProduct.metadata,
+          createdAt: now,
+          updatedAt: now,
+        },
+      }
+
+      setSimpleProducts((currentProducts) => [...currentProducts, clonedProduct])
+      setCurrentProductPage(Math.ceil((simpleProducts.length + 1) / PRODUCTS_PER_PAGE))
+      setSelectedProductId(clonedProduct.id)
 
       return
     }
@@ -285,13 +453,36 @@ export const Articulos = () => {
     setProductModalError(null)
   }
 
+  const handleSelectProduct = (productId: string) => {
+    if (adjustingProductId && adjustingProductId !== productId) {
+      clearAdjustment()
+    }
+
+    setSelectedProductId(productId)
+  }
+
   const handleEditProduct = (product: SimpleProduct) => {
+    if (adjustingProductId === product.id) {
+      return
+    }
+
+    clearAdjustment()
     setSelectedProductId(product.id)
     setProductModalMode('edit')
     setSimpleProductDraft(createEditableSimpleProductDraft(product))
     setSimpleProductErrors({})
     setActiveProductTab('general')
     setOpenActionId('editar')
+  }
+
+  const handlePreviousProductPage = () => {
+    clearAdjustment()
+    setCurrentProductPage((currentPage) => Math.max(1, currentPage - 1))
+  }
+
+  const handleNextProductPage = () => {
+    clearAdjustment()
+    setCurrentProductPage((currentPage) => Math.min(totalProductPages || 1, currentPage + 1))
   }
 
   const clearSimpleProductErrors = (fields: Array<keyof SimpleProductValidationErrors>) => {
@@ -495,6 +686,7 @@ export const Articulos = () => {
       setSelectedProductId(productToSave.id)
     } else {
       setSimpleProducts((currentProducts) => [...currentProducts, productToSave])
+      setCurrentProductPage(Math.ceil((simpleProducts.length + 1) / PRODUCTS_PER_PAGE))
       setSelectedProductId(productToSave.id)
     }
 
@@ -502,6 +694,7 @@ export const Articulos = () => {
     setSimpleProductErrors({})
     setActiveProductTab('general')
     setProductModalMode('create')
+    clearAdjustment()
     handleCloseActionModal()
   }
 
@@ -561,12 +754,12 @@ export const Articulos = () => {
                 {simpleProducts.length === 0 ? (
                   <p className='articulos-ui__results-empty'>Sin coincidencias para mostrar.</p>
                 ) : (
-                  simpleProducts.map((product) => (
+                  paginatedProducts.map((product) => (
                     <div
                       aria-selected={selectedProductId === product.id}
                       className={`articulos-ui__results-row ${selectedProductId === product.id ? 'articulos-ui__results-row--selected' : ''}`}
                       key={product.id}
-                      onClick={() => setSelectedProductId(product.id)}
+                      onClick={() => handleSelectProduct(product.id)}
                       onDoubleClick={() => handleEditProduct(product)}
                       role='row'
                     >
@@ -575,7 +768,55 @@ export const Articulos = () => {
                         <span>{product.general.name || 'Producto sin nombre'}</span>
                       </div>
                       <div className='articulos-ui__results-data articulos-ui__results-cell--stock' role='cell'>
-                        {product.inventory.quantity ?? '-'}
+                        {adjustingProductId === product.id ? (
+                          <div
+                            className='articulos-ui__stock-adjuster'
+                            onClick={(event) => event.stopPropagation()}
+                            onDoubleClick={(event) => event.stopPropagation()}
+                          >
+                            <button
+                              aria-label='Disminuir existencias'
+                              className='articulos-ui__stock-adjuster-button'
+                              onClick={decrementAdjustmentQuantity}
+                              type='button'
+                            >
+                              -
+                            </button>
+                            <input
+                              aria-invalid={Boolean(adjustmentError)}
+                              aria-label='Nueva cantidad de existencias'
+                              className='articulos-ui__stock-adjuster-input'
+                              inputMode='numeric'
+                              onChange={(event) => {
+                                setAdjustmentQuantityDraft(event.target.value)
+                                setAdjustmentError(null)
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter') {
+                                  event.preventDefault()
+                                  confirmProductAdjustment()
+                                }
+
+                                if (event.key === 'Escape') {
+                                  event.preventDefault()
+                                  clearAdjustment()
+                                }
+                              }}
+                              type='text'
+                              value={adjustmentQuantityDraft}
+                            />
+                            <button
+                              aria-label='Aumentar existencias'
+                              className='articulos-ui__stock-adjuster-button'
+                              onClick={incrementAdjustmentQuantity}
+                              type='button'
+                            >
+                              +
+                            </button>
+                          </div>
+                        ) : (
+                          product.inventory.quantity ?? '-'
+                        )}
                       </div>
                       <div className='articulos-ui__results-data articulos-ui__results-cell--price' role='cell'>
                         {product.general.regularPrice !== null ? `$${product.general.regularPrice.toFixed(2)}` : '-'}
@@ -592,18 +833,30 @@ export const Articulos = () => {
             </div>
 
             <footer className='articulos-ui__pagination'>
-              <button type='button' className='articulos-ui__page-arrow' aria-label='Página anterior'>
+              <button
+                aria-label='Página anterior'
+                className='articulos-ui__page-arrow'
+                disabled={!canGoToPreviousProductPage}
+                onClick={handlePreviousProductPage}
+                type='button'
+              >
                 ◀
               </button>
 
               <div className='articulos-ui__page-meta'>
                 <span className='articulos-ui__page-label'>Página</span>
-                <input className='articulos-ui__page-input' type='text' value='0' readOnly />
+                <input className='articulos-ui__page-input' type='text' value={currentProductPageLabel} readOnly />
                 <span className='articulos-ui__page-separator'>de</span>
-                <input className='articulos-ui__page-input' type='text' value='0' readOnly />
+                <input className='articulos-ui__page-input' type='text' value={totalProductPages} readOnly />
               </div>
 
-              <button type='button' className='articulos-ui__page-arrow' aria-label='Página siguiente'>
+              <button
+                aria-label='Página siguiente'
+                className='articulos-ui__page-arrow'
+                disabled={!canGoToNextProductPage}
+                onClick={handleNextProductPage}
+                type='button'
+              >
                 ▶
               </button>
             </footer>
