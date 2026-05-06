@@ -184,6 +184,21 @@
   grid-template-columns: minmax(380px, 1fr) 90px 110px repeat(5, 31px);
   min-height: 42px;
   border-bottom: 1px solid #c7c7c7;
+  cursor: pointer;
+}
+
+.articulos-ui__results-row:hover .articulos-ui__results-data {
+  background: #eaf4fb;
+}
+
+.articulos-ui__results-row--selected {
+  outline: 2px solid #1d6fa5;
+  outline-offset: -2px;
+}
+
+.articulos-ui__results-row--selected .articulos-ui__results-data {
+  background: #d6ecfb;
+  color: #123b5f;
 }
 
 .articulos-ui__results-data {

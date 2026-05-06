@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import './style.css'
 import { Modal } from '../../ventanaModal/modal'
 
@@ -24,6 +24,7 @@ type ResultColumn = {
 type ProductTab = 'general' | 'inventario' | 'atributos'
 type ProductType = 'simple'
 type ProductTypeOption = 'Producto simple' | 'Producto compuesto' | 'Servicio'
+type ProductModalMode = 'create' | 'edit'
 type InventoryTrackingMode = 'tracked' | 'untracked'
 type ReservationPolicy = 'disabled' | 'allowed'
 type StockStatus = 'in_stock' | 'out_of_stock' | 'backorder'
@@ -141,6 +142,13 @@ const productTypeOptions: ProductTypeOption[] = ['Producto simple', 'Producto co
 
 const createClientId = (prefix: string) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
 
+const createEmptyProductAttribute = (): ProductAttribute => ({
+  id: createClientId('attr'),
+  name: '',
+  values: [],
+  visible: true,
+})
+
 const createEmptySimpleProduct = (): SimpleProduct => {
   const now = new Date().toISOString()
 
@@ -163,12 +171,7 @@ const createEmptySimpleProduct = (): SimpleProduct => {
       stockStatus: 'in_stock',
     },
     attributes: [
-      {
-        id: createClientId('attr'),
-        name: '',
-        values: [],
-        visible: true,
-      },
+      createEmptyProductAttribute(),
     ],
     media: {
       images: [],
@@ -180,6 +183,11 @@ const createEmptySimpleProduct = (): SimpleProduct => {
     },
   }
 }
+
+const createEditableSimpleProductDraft = (product: SimpleProduct): SimpleProduct => ({
+  ...product,
+  attributes: product.attributes.length > 0 ? product.attributes : [createEmptyProductAttribute()],
+})
 
 const parseNumberInput = (value: string) => {
   if (value.trim() === '') {
@@ -195,19 +203,95 @@ export const Articulos = () => {
   const [openActionId, setOpenActionId] = useState<ActionButton['id'] | null>(null)
   const [activeProductTab, setActiveProductTab] = useState<ProductTab>('general')
   const [productType, setProductType] = useState<ProductTypeOption>(productTypeOptions[0])
+  const [productModalMode, setProductModalMode] = useState<ProductModalMode>('create')
   const [simpleProductDraft, setSimpleProductDraft] = useState<SimpleProduct>(() => createEmptySimpleProduct())
   const [simpleProducts, setSimpleProducts] = useState<SimpleProduct[]>([])
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
   const [simpleProductErrors, setSimpleProductErrors] = useState<SimpleProductValidationErrors>({})
+  const [productModalError, setProductModalError] = useState<string | null>(null)
 
   const trackInventory = simpleProductDraft.inventory.trackingMode === 'tracked'
   const primaryAttribute = simpleProductDraft.attributes[0]
+  const isProductModalOpen = openActionId === 'agregar' || openActionId === 'editar'
+
+  useEffect(() => {
+    const handleEscapeSelection = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !openActionId && !productModalError) {
+        setSelectedProductId(null)
+      }
+    }
+
+    window.addEventListener('keydown', handleEscapeSelection)
+
+    return () => {
+      window.removeEventListener('keydown', handleEscapeSelection)
+    }
+  }, [openActionId, productModalError])
 
   const handleOpenActionModal = (actionId: ActionButton['id']) => {
+    if (actionId === 'agregar') {
+      setProductModalMode('create')
+      setSimpleProductDraft(createEmptySimpleProduct())
+      setSimpleProductErrors({})
+      setActiveProductTab('general')
+      setOpenActionId(actionId)
+
+      return
+    }
+
+    if (actionId === 'editar') {
+      const selectedProduct = simpleProducts.find((product) => product.id === selectedProductId)
+
+      if (!selectedProduct) {
+        setProductModalError('No se ha seleccionado producto')
+
+        return
+      }
+
+      setProductModalMode('edit')
+      setSimpleProductDraft(createEditableSimpleProductDraft(selectedProduct))
+      setSimpleProductErrors({})
+      setActiveProductTab('general')
+      setOpenActionId(actionId)
+
+      return
+    }
+
+    if (actionId === 'eliminar') {
+      const selectedProduct = simpleProducts.find((product) => product.id === selectedProductId)
+
+      if (!selectedProduct) {
+        setProductModalError('No artículo seleccionado')
+
+        return
+      }
+
+      setSimpleProducts((currentProducts) => (
+        currentProducts.filter((product) => product.id !== selectedProduct.id)
+      ))
+      setSelectedProductId(null)
+
+      return
+    }
+
     setOpenActionId(actionId)
   }
 
   const handleCloseActionModal = () => {
     setOpenActionId(null)
+  }
+
+  const handleCloseProductModalError = () => {
+    setProductModalError(null)
+  }
+
+  const handleEditProduct = (product: SimpleProduct) => {
+    setSelectedProductId(product.id)
+    setProductModalMode('edit')
+    setSimpleProductDraft(createEditableSimpleProductDraft(product))
+    setSimpleProductErrors({})
+    setActiveProductTab('general')
+    setOpenActionId('editar')
   }
 
   const clearSimpleProductErrors = (fields: Array<keyof SimpleProductValidationErrors>) => {
@@ -402,14 +486,27 @@ export const Articulos = () => {
       return
     }
 
-    setSimpleProducts((currentProducts) => [...currentProducts, productToSave])
+    if (productModalMode === 'edit') {
+      setSimpleProducts((currentProducts) => (
+        currentProducts.map((product) => (
+          product.id === productToSave.id ? productToSave : product
+        ))
+      ))
+      setSelectedProductId(productToSave.id)
+    } else {
+      setSimpleProducts((currentProducts) => [...currentProducts, productToSave])
+      setSelectedProductId(productToSave.id)
+    }
+
     setSimpleProductDraft(createEmptySimpleProduct())
     setSimpleProductErrors({})
     setActiveProductTab('general')
+    setProductModalMode('create')
     handleCloseActionModal()
   }
 
   const productPrimaryActionLabel = activeProductTab === 'atributos' ? 'Guardar' : 'Siguiente'
+  const productModalTitle = `Datos del producto - ${productModalMode === 'edit' ? 'Editar' : 'Agregar'}`
 
   return (
     <section className='articulos-ui'>
@@ -465,7 +562,14 @@ export const Articulos = () => {
                   <p className='articulos-ui__results-empty'>Sin coincidencias para mostrar.</p>
                 ) : (
                   simpleProducts.map((product) => (
-                    <div className='articulos-ui__results-row' key={product.id} role='row'>
+                    <div
+                      aria-selected={selectedProductId === product.id}
+                      className={`articulos-ui__results-row ${selectedProductId === product.id ? 'articulos-ui__results-row--selected' : ''}`}
+                      key={product.id}
+                      onClick={() => setSelectedProductId(product.id)}
+                      onDoubleClick={() => handleEditProduct(product)}
+                      role='row'
+                    >
                       <div className='articulos-ui__results-data articulos-ui__results-cell--description' role='cell'>
                         <strong>{product.inventory.sku || product.id}</strong>
                         <span>{product.general.name || 'Producto sin nombre'}</span>
@@ -535,7 +639,7 @@ export const Articulos = () => {
           return (
             <Modal
               key={action.id}
-              isOpen={openActionId === action.id}
+              isOpen={isProductModalOpen}
               onClose={handleCloseActionModal}
               width='calc(100vw - 40px)'
               maxWidth='calc(100vw - 40px)'
@@ -547,7 +651,7 @@ export const Articulos = () => {
               <div className='articulos-ui__product-modal'>
                 <header className='articulos-ui__product-modal-header'>
                   <div className='articulos-ui__product-modal-title-row'>
-                    <h2 className='articulos-ui__product-modal-title'>Datos del producto -</h2>
+                    <h2 className='articulos-ui__product-modal-title'>{productModalTitle}</h2>
                     <label className='articulos-ui__product-type-label'>
                       <span className='articulos-ui__product-type-text'>Tipo de producto</span>
                       <select
@@ -899,6 +1003,10 @@ export const Articulos = () => {
           )
         }
 
+        if (action.id === 'editar') {
+          return null
+        }
+
         return (
           <Modal
             key={action.id}
@@ -938,6 +1046,27 @@ export const Articulos = () => {
           </Modal>
         )
       })}
+
+      <Modal
+        isOpen={Boolean(productModalError)}
+        onClose={handleCloseProductModalError}
+        title='Editar artículo'
+        width='min(92vw, 420px)'
+      >
+        <div className='articulos-ui__action-modal'>
+          <p className='articulos-ui__action-modal-text'>{productModalError}</p>
+
+          <div className='articulos-ui__action-modal-actions'>
+            <button
+              className='articulos-ui__action-modal-button articulos-ui__action-modal-button--primary'
+              onClick={handleCloseProductModalError}
+              type='button'
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+      </Modal>
     </section>
   )
 }
