@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './style.css'
 import { Modal } from '../../ventanaModal/modal'
 import { useSession } from '../../../context/SessionContext'
@@ -43,6 +43,8 @@ type ProductImage = {
   altText?: string
   isPrimary: boolean
   order: number
+  localFile?: File
+  previewUrl?: string
 }
 
 type SimpleProduct = {
@@ -88,8 +90,8 @@ type ProductWritePayload = {
   general: SimpleProduct['general']
   inventory: SimpleProduct['inventory']
   attributes: []
-  media: {
-    images: []
+  media?: {
+    images: ProductImage[]
   }
 }
 
@@ -164,6 +166,8 @@ const productTabs: Array<{ id: ProductTab; label: string }> = [
 
 const productTypeOptions: ProductTypeOption[] = ['Producto simple', 'Producto compuesto', 'Servicio']
 const PRODUCTS_PER_PAGE = 20
+const SHORT_DESCRIPTION_MAX_LENGTH = 150
+const LONG_DESCRIPTION_MAX_LENGTH = 1000
 
 const createClientId = (prefix: string) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
 
@@ -173,6 +177,16 @@ const createEmptyProductAttribute = (): ProductAttribute => ({
   values: [],
   visible: true,
 })
+
+const isLocalProductImage = (image: ProductImage) => Boolean(image.localFile)
+
+const resolveApiUrl = (apiBaseUrl: string, path: string) => {
+  if (/^https?:\/\//i.test(path) || path.startsWith('blob:') || path.startsWith('data:')) {
+    return path
+  }
+
+  return `${apiBaseUrl.replace(/\/$/, '')}/${path.replace(/^\//, '')}`
+}
 
 const createEmptySimpleProduct = (): SimpleProduct => {
   const now = new Date().toISOString()
@@ -278,7 +292,7 @@ const requestArticulosApi = async <T,>(
     response = await fetch(`${options.apiBaseUrl}/articulos${path}`, {
       ...init,
       headers: {
-        ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(init.body && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
         ...init.headers,
         Authorization: `${options.tokenType} ${options.accessToken}`,
       },
@@ -292,6 +306,29 @@ const requestArticulosApi = async <T,>(
   }
 
   return response.json() as Promise<T>
+}
+
+const requestArticuloImageObjectUrl = async (
+  options: ApiRequestOptions,
+  imageUrl: string,
+) => {
+  let response: Response
+
+  try {
+    response = await fetch(resolveApiUrl(options.apiBaseUrl, imageUrl), {
+      headers: {
+        Authorization: `${options.tokenType} ${options.accessToken}`,
+      },
+    })
+  } catch {
+    throw new Error('No fue posible cargar la imagen del artículo.')
+  }
+
+  if (!response.ok) {
+    throw new Error(await getApiErrorMessage(response))
+  }
+
+  return URL.createObjectURL(await response.blob())
 }
 
 export const Articulos = () => {
@@ -323,16 +360,35 @@ export const Articulos = () => {
   const [isSavingProduct, setIsSavingProduct] = useState(false)
   const [isDeletingProduct, setIsDeletingProduct] = useState(false)
   const [isAdjustingProduct, setIsAdjustingProduct] = useState(false)
+  const [activeProductImageId, setActiveProductImageId] = useState<string | null>(null)
+  const [productImageCarouselStart, setProductImageCarouselStart] = useState(0)
+  const [isProductImageExpanded, setIsProductImageExpanded] = useState(false)
+  const [selectedProductImageId, setSelectedProductImageId] = useState<string | null>(null)
+  const [deletedProductImageIds, setDeletedProductImageIds] = useState<string[]>([])
+  const [productImageObjectUrls, setProductImageObjectUrls] = useState<Record<string, string>>({})
+  const productImageInputRef = useRef<HTMLInputElement | null>(null)
+  const fetchedProductImageObjectUrlsRef = useRef<string[]>([])
 
   const trackInventory = simpleProductDraft.inventory.trackingMode === 'tracked'
   const primaryAttribute = simpleProductDraft.attributes[0]
   const isProductModalOpen = openActionId === 'agregar' || openActionId === 'editar'
+  const productImages = useMemo(() => (
+    [...simpleProductDraft.media.images].sort((firstImage, secondImage) => firstImage.order - secondImage.order)
+  ), [simpleProductDraft.media.images])
+  const activeProductImage = productImages.find((image) => image.id === activeProductImageId) ?? productImages[0] ?? null
+  const visibleProductImages = productImages.slice(productImageCarouselStart, productImageCarouselStart + 4)
   const totalProductPages = Math.ceil(totalProducts / PRODUCTS_PER_PAGE)
   const currentProductPageLabel = totalProductPages === 0 ? 0 : currentProductPage
   const paginatedProducts = simpleProducts
   const canGoToPreviousProductPage = totalProductPages > 0 && currentProductPage > 1
   const canGoToNextProductPage = totalProductPages > 0 && currentProductPage < totalProductPages
   const selectedProduct = simpleProducts.find((product) => product.id === selectedProductId) ?? null
+  const selectedProductImages = useMemo(() => (
+    selectedProduct
+      ? [...selectedProduct.media.images].sort((firstImage, secondImage) => firstImage.order - secondImage.order)
+      : []
+  ), [selectedProduct])
+  const activeSelectedProductImage = selectedProductImages.find((image) => image.id === selectedProductImageId) ?? selectedProductImages[0] ?? null
   const canUseApi = isAuthenticated && Boolean(accessToken && tokenType)
   const apiRequestOptions = accessToken && tokenType
     ? { accessToken, apiBaseUrl, tokenType }
@@ -397,6 +453,89 @@ export const Articulos = () => {
   useEffect(() => {
     fetchProducts(currentProductPage, activeSearchQuery)
   }, [activeSearchQuery, currentProductPage, fetchProducts])
+
+  useEffect(() => (
+    () => {
+      fetchedProductImageObjectUrlsRef.current.forEach((objectUrl) => URL.revokeObjectURL(objectUrl))
+    }
+  ), [])
+
+  useEffect(() => {
+    if (!accessToken || !tokenType) {
+      return
+    }
+
+    const requestOptions = { accessToken, apiBaseUrl, tokenType }
+
+    const imagesToLoad = [...productImages, ...selectedProductImages]
+
+    imagesToLoad.forEach((image) => {
+      if (image.previewUrl || isLocalProductImage(image) || productImageObjectUrls[image.id]) {
+        return
+      }
+
+      requestArticuloImageObjectUrl(requestOptions, image.url)
+        .then((objectUrl) => {
+          fetchedProductImageObjectUrlsRef.current.push(objectUrl)
+          setProductImageObjectUrls((currentUrls) => (
+            currentUrls[image.id]
+              ? currentUrls
+              : {
+                  ...currentUrls,
+                  [image.id]: objectUrl,
+                }
+          ))
+        })
+        .catch(() => {
+          setProductImageObjectUrls((currentUrls) => (
+            currentUrls[image.id]
+              ? currentUrls
+              : {
+                  ...currentUrls,
+                  [image.id]: resolveApiUrl(apiBaseUrl, image.url),
+                }
+          ))
+        })
+    })
+  }, [accessToken, apiBaseUrl, productImageObjectUrls, productImages, selectedProductImages, tokenType])
+
+  useEffect(() => {
+    if (productImages.length === 0) {
+      setActiveProductImageId(null)
+      setProductImageCarouselStart(0)
+
+      return
+    }
+
+    const activeImageIndex = productImages.findIndex((image) => image.id === activeProductImageId)
+
+    if (activeImageIndex === -1) {
+      setActiveProductImageId(productImages[0].id)
+      setProductImageCarouselStart(0)
+
+      return
+    }
+
+    if (activeImageIndex < productImageCarouselStart) {
+      setProductImageCarouselStart(activeImageIndex)
+    }
+
+    if (activeImageIndex > productImageCarouselStart + 3) {
+      setProductImageCarouselStart(activeImageIndex - 3)
+    }
+  }, [activeProductImageId, productImageCarouselStart, productImages])
+
+  useEffect(() => {
+    if (selectedProductImages.length === 0) {
+      setSelectedProductImageId(null)
+
+      return
+    }
+
+    if (!selectedProductImages.some((image) => image.id === selectedProductImageId)) {
+      setSelectedProductImageId(selectedProductImages.find((image) => image.isPrimary)?.id ?? selectedProductImages[0].id)
+    }
+  }, [selectedProductImageId, selectedProductImages])
 
   useEffect(() => {
     const handleEscapeSelection = (event: KeyboardEvent) => {
@@ -493,20 +632,6 @@ export const Articulos = () => {
     }
   }
 
-  const decrementAdjustmentQuantity = () => {
-    const nextQuantity = Math.max(0, parseAdjustmentQuantity() ?? 0)
-
-    setAdjustmentQuantityDraft(String(Math.max(0, nextQuantity - 1)))
-    setAdjustmentError(null)
-  }
-
-  const incrementAdjustmentQuantity = () => {
-    const nextQuantity = parseAdjustmentQuantity() ?? 0
-
-    setAdjustmentQuantityDraft(String(nextQuantity + 1))
-    setAdjustmentError(null)
-  }
-
   const reloadCurrentProducts = () => {
     fetchProducts(currentProductPage, activeSearchQuery)
   }
@@ -531,6 +656,11 @@ export const Articulos = () => {
       clearAdjustment()
       setProductModalMode('create')
       setSimpleProductDraft(createEmptySimpleProduct())
+      setActiveProductImageId(null)
+      setProductImageCarouselStart(0)
+      setIsProductImageExpanded(false)
+      setDeletedProductImageIds([])
+      setProductImageObjectUrls({})
       setSimpleProductErrors({})
       setActiveProductTab('general')
       setOpenActionId(actionId)
@@ -556,6 +686,11 @@ export const Articulos = () => {
       clearAdjustment()
       setProductModalMode('edit')
       setSimpleProductDraft(createEditableSimpleProductDraft(selectedProduct))
+      setActiveProductImageId(selectedProduct.media.images.find((image) => image.isPrimary)?.id ?? selectedProduct.media.images[0]?.id ?? null)
+      setProductImageCarouselStart(0)
+      setIsProductImageExpanded(false)
+      setDeletedProductImageIds([])
+      setProductImageObjectUrls({})
       setSimpleProductErrors({})
       setActiveProductTab('general')
       setOpenActionId(actionId)
@@ -686,6 +821,11 @@ export const Articulos = () => {
     setSelectedProductId(product.id)
     setProductModalMode('edit')
     setSimpleProductDraft(createEditableSimpleProductDraft(product))
+    setActiveProductImageId(product.media.images.find((image) => image.isPrimary)?.id ?? product.media.images[0]?.id ?? null)
+    setProductImageCarouselStart(0)
+    setIsProductImageExpanded(false)
+    setDeletedProductImageIds([])
+    setProductImageObjectUrls({})
     setSimpleProductErrors({})
     setActiveProductTab('general')
     setOpenActionId('editar')
@@ -781,6 +921,240 @@ export const Articulos = () => {
     }))
   }
 
+  const updateSimpleProductImages = (images: ProductImage[]) => {
+    const nextImages = images.map((image, index) => ({
+      ...image,
+      isPrimary: index === 0,
+      order: index,
+    }))
+
+    setSimpleProductDraft((currentProduct) => ({
+      ...currentProduct,
+      media: {
+        images: nextImages,
+      },
+      metadata: {
+        ...currentProduct.metadata,
+        updatedAt: new Date().toISOString(),
+      },
+    }))
+  }
+
+  const handleAddProductImageClick = () => {
+    productImageInputRef.current?.click()
+  }
+
+  const processProductImageFiles = (files: File[]) => {
+    const selectedFiles = files.filter((file) => file.type.startsWith('image/'))
+
+    if (selectedFiles.length === 0) {
+      return
+    }
+
+    try {
+      const uploadedImages = selectedFiles.map((file, index): ProductImage => {
+        const previewUrl = URL.createObjectURL(file)
+
+        return {
+          id: createClientId('img'),
+          url: previewUrl,
+          altText: file.name,
+          isPrimary: productImages.length === 0 && index === 0,
+          order: productImages.length + index,
+          localFile: file,
+          previewUrl,
+        }
+      })
+      const nextImages = [...productImages, ...uploadedImages]
+
+      updateSimpleProductImages(nextImages)
+      setActiveProductImageId(uploadedImages[0].id)
+      setProductImageCarouselStart(Math.max(0, nextImages.length - 4))
+    } catch (error) {
+      setProductModalError(error instanceof Error ? error.message : 'No fue posible agregar la imagen.')
+    }
+  }
+
+  const handleProductImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    processProductImageFiles(Array.from(event.target.files ?? []))
+    event.target.value = ''
+  }
+
+  const handleProductImageDrop = (event: React.DragEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    processProductImageFiles(Array.from(event.dataTransfer.files ?? []))
+  }
+
+  const handleProductImageDragOver = (event: React.DragEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+  }
+
+  const getProductImageDisplayUrl = (image: ProductImage) => (
+    image.previewUrl ?? productImageObjectUrls[image.id] ?? resolveApiUrl(apiBaseUrl, image.url)
+  )
+
+  const handleSelectProductImage = (imageId: string) => {
+    setActiveProductImageId(imageId)
+    setIsProductImageExpanded(false)
+  }
+
+  const handleOpenProductImageExpanded = () => {
+    if (activeProductImage) {
+      setIsProductImageExpanded(true)
+    }
+  }
+
+  const handleCloseProductImageExpanded = () => {
+    setIsProductImageExpanded(false)
+  }
+
+  const handlePreviousProductImage = () => {
+    if (!activeProductImage) {
+      return
+    }
+
+    const currentIndex = productImages.findIndex((image) => image.id === activeProductImage.id)
+    const previousIndex = currentIndex <= 0 ? productImages.length - 1 : currentIndex - 1
+
+    setActiveProductImageId(productImages[previousIndex]?.id ?? null)
+  }
+
+  const handleNextProductImage = () => {
+    if (!activeProductImage) {
+      return
+    }
+
+    const currentIndex = productImages.findIndex((image) => image.id === activeProductImage.id)
+    const nextIndex = currentIndex >= productImages.length - 1 ? 0 : currentIndex + 1
+
+    setActiveProductImageId(productImages[nextIndex]?.id ?? null)
+  }
+
+  const handlePreviousSelectedProductImage = () => {
+    if (!activeSelectedProductImage) {
+      return
+    }
+
+    const currentIndex = selectedProductImages.findIndex((image) => image.id === activeSelectedProductImage.id)
+    const previousIndex = currentIndex <= 0 ? selectedProductImages.length - 1 : currentIndex - 1
+
+    setSelectedProductImageId(selectedProductImages[previousIndex]?.id ?? null)
+  }
+
+  const handleNextSelectedProductImage = () => {
+    if (!activeSelectedProductImage) {
+      return
+    }
+
+    const currentIndex = selectedProductImages.findIndex((image) => image.id === activeSelectedProductImage.id)
+    const nextIndex = currentIndex >= selectedProductImages.length - 1 ? 0 : currentIndex + 1
+
+    setSelectedProductImageId(selectedProductImages[nextIndex]?.id ?? null)
+  }
+
+  const handleDeleteActiveProductImage = () => {
+    if (!activeProductImage) {
+      return
+    }
+
+    const activeImageIndex = productImages.findIndex((image) => image.id === activeProductImage.id)
+    const nextImages = productImages.filter((image) => image.id !== activeProductImage.id)
+    const nextActiveImage = nextImages[activeImageIndex] ?? nextImages[activeImageIndex - 1] ?? nextImages[0] ?? null
+
+    if (activeProductImage.previewUrl) {
+      URL.revokeObjectURL(activeProductImage.previewUrl)
+    }
+
+    if (!isLocalProductImage(activeProductImage)) {
+      setDeletedProductImageIds((currentImageIds) => (
+        currentImageIds.includes(activeProductImage.id)
+          ? currentImageIds
+          : [...currentImageIds, activeProductImage.id]
+      ))
+    }
+
+    updateSimpleProductImages(nextImages)
+    setActiveProductImageId(nextActiveImage?.id ?? null)
+    setProductImageCarouselStart((currentStart) => Math.min(currentStart, Math.max(0, nextImages.length - 4)))
+    setIsProductImageExpanded(false)
+  }
+
+  const uploadProductImage = async (
+    productId: string,
+    image: ProductImage,
+    requestOptions: ApiRequestOptions,
+  ) => {
+    if (!image.localFile) {
+      return image
+    }
+
+    const formData = new FormData()
+    formData.append('file', image.localFile, image.localFile.name)
+
+    return requestArticulosApi<ProductImage>(
+      requestOptions,
+      `/${productId}/imagenes`,
+      {
+        method: 'POST',
+        body: formData,
+      },
+    )
+  }
+
+  const syncProductImages = async (
+    productId: string,
+    images: ProductImage[],
+    requestOptions: ApiRequestOptions,
+  ) => {
+    for (const imageId of deletedProductImageIds) {
+      await requestArticulosApi<SimpleProduct>(
+        requestOptions,
+        `/${productId}/imagenes/${imageId}`,
+        { method: 'DELETE' },
+      )
+    }
+
+    const persistedImages: ProductImage[] = []
+
+    for (const image of images) {
+      const persistedImage = isLocalProductImage(image)
+        ? await uploadProductImage(productId, image, requestOptions)
+        : image
+
+      persistedImages.push({
+        id: persistedImage.id,
+        url: persistedImage.url,
+        altText: persistedImage.altText,
+        isPrimary: persistedImages.length === 0,
+        order: persistedImages.length,
+      })
+    }
+
+    const orderedProduct = await requestArticulosApi<SimpleProduct>(
+      requestOptions,
+      `/${productId}/imagenes`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({
+          images: persistedImages.map((image, index) => ({
+            id: image.id,
+            isPrimary: index === 0,
+          })),
+        }),
+      },
+    )
+
+    setDeletedProductImageIds([])
+
+    images.forEach((image) => {
+      if (image.previewUrl) {
+        URL.revokeObjectURL(image.previewUrl)
+      }
+    })
+
+    return orderedProduct
+  }
+
   const handleTrackInventoryChange = (isTracked: boolean) => {
     updateSimpleProductInventory({
       trackingMode: isTracked ? 'tracked' : 'untracked',
@@ -820,7 +1194,7 @@ export const Articulos = () => {
     }
   }
 
-  const buildProductWritePayload = (product: SimpleProduct): ProductWritePayload => ({
+  const buildProductWritePayload = (product: SimpleProduct, includeMedia = false): ProductWritePayload => ({
     type: 'simple',
     general: product.general,
     inventory: {
@@ -830,9 +1204,21 @@ export const Articulos = () => {
       lowStockThreshold: product.inventory.trackingMode === 'tracked' ? product.inventory.lowStockThreshold : null,
     },
     attributes: [],
-    media: {
-      images: [],
-    },
+    ...(includeMedia
+      ? {
+          media: {
+            images: product.media.images
+              .filter((image) => !isLocalProductImage(image))
+              .map((image, index) => ({
+                id: image.id,
+                url: image.url,
+                altText: image.altText,
+                isPrimary: index === 0,
+                order: index,
+              })),
+          },
+        }
+      : {}),
   })
 
   const validateSimpleProductGeneral = (product: SimpleProduct) => {
@@ -919,13 +1305,18 @@ export const Articulos = () => {
 
     if (productModalMode === 'edit') {
       try {
-        const updatedProduct = await requestArticulosApi<SimpleProduct>(
+        const updatedProductWithoutImages = await requestArticulosApi<SimpleProduct>(
           apiRequestOptions,
           `/${productToSave.id}/editar`,
           {
             method: 'PATCH',
             body: JSON.stringify(buildProductWritePayload(productToSave)),
           },
+        )
+        const updatedProduct = await syncProductImages(
+          updatedProductWithoutImages.id,
+          productImages,
+          apiRequestOptions,
         )
 
         replaceProductInList(updatedProduct)
@@ -942,11 +1333,16 @@ export const Articulos = () => {
           '/agregar',
           {
             method: 'POST',
-            body: JSON.stringify(buildProductWritePayload(productToSave)),
+            body: JSON.stringify(buildProductWritePayload(productToSave, true)),
           },
         )
+        const productWithImages = await syncProductImages(
+          createdProduct.id,
+          productImages,
+          apiRequestOptions,
+        )
 
-        setSelectedProductId(createdProduct.id)
+        setSelectedProductId(productWithImages.id)
         setCurrentProductPage(1)
         fetchProducts(1, activeSearchQuery)
       } catch (error) {
@@ -961,13 +1357,143 @@ export const Articulos = () => {
     setSimpleProductErrors({})
     setActiveProductTab('general')
     setProductModalMode('create')
+    setDeletedProductImageIds([])
+    setProductImageObjectUrls({})
     clearAdjustment()
     setIsSavingProduct(false)
     handleCloseActionModal()
   }
 
-  const productPrimaryActionLabel = activeProductTab === 'atributos' ? 'Guardar' : 'Siguiente'
-  const productModalTitle = `Datos del producto - ${productModalMode === 'edit' ? 'Editar' : 'Agregar'}`
+  const renderProductImagePanel = (variant: 'full' | 'compact' = 'full') => (
+    <aside className={`articulos-ui__product-image-panel articulos-ui__product-image-panel--${variant}`}>
+      <input
+        accept='image/*'
+        className='articulos-ui__product-image-input'
+        multiple
+        onChange={handleProductImageUpload}
+        ref={productImageInputRef}
+        type='file'
+      />
+      <header className='articulos-ui__product-image-header'>
+        {variant === 'full' && <h3>Imágenes del producto</h3>}
+        <button className='articulos-ui__product-image-button' onClick={handleAddProductImageClick} type='button'>
+          <span aria-hidden='true'>+</span>
+          Agregar imagen
+        </button>
+      </header>
+
+      {variant === 'full' && (
+        <button
+          className='articulos-ui__product-image-dropzone'
+          onClick={handleAddProductImageClick}
+          onDragOver={handleProductImageDragOver}
+          onDrop={handleProductImageDrop}
+          type='button'
+        >
+          <span className='articulos-ui__product-image-drop-icon' aria-hidden='true'>▧</span>
+          <span>
+            <strong>Arrastra y suelta imágenes aquí</strong>
+            <small>o selecciona archivos desde tu dispositivo</small>
+          </span>
+        </button>
+      )}
+
+      <div className='articulos-ui__product-image-preview' aria-label='Vista previa de imagen del producto'>
+        {activeProductImage ? (
+          <>
+            <button
+              aria-label='Eliminar imagen'
+              className='articulos-ui__product-image-delete'
+              onClick={handleDeleteActiveProductImage}
+              type='button'
+            >
+              ⌫
+            </button>
+            <div
+              aria-label={activeProductImage.altText || simpleProductDraft.general.name || 'Imagen del producto'}
+              className='articulos-ui__product-image-canvas'
+              role='img'
+              style={{ backgroundImage: `url(${getProductImageDisplayUrl(activeProductImage)})` }}
+            />
+            {activeProductImage.isPrimary && variant === 'full' && (
+              <span className='articulos-ui__product-image-primary'>
+                <span aria-hidden='true'>★</span>
+                Principal
+              </span>
+            )}
+            <div className='articulos-ui__product-image-zoom-layer'>
+              <button
+                aria-label='Ampliar imagen'
+                className='articulos-ui__product-image-zoom'
+                onClick={handleOpenProductImageExpanded}
+                type='button'
+              >
+                ⌕
+              </button>
+            </div>
+          </>
+        ) : (
+          <span aria-hidden='true'>▧</span>
+        )}
+      </div>
+
+      <div className='articulos-ui__product-thumbs'>
+        <button
+          className='articulos-ui__product-thumbs-arrow'
+          disabled={productImages.length < 2}
+          onClick={handlePreviousProductImage}
+          type='button'
+          aria-label='Imagen anterior'
+        >
+          ‹
+        </button>
+        {Array.from({ length: 4 }).map((_, index) => {
+          const image = visibleProductImages[index]
+
+          return image ? (
+            <button
+              aria-label={`Seleccionar imagen ${productImageCarouselStart + index + 1}`}
+              className={`articulos-ui__product-thumb ${activeProductImage?.id === image.id ? 'articulos-ui__product-thumb--active' : ''}`}
+              key={image.id}
+              onClick={() => handleSelectProductImage(image.id)}
+              type='button'
+            >
+              <img src={getProductImageDisplayUrl(image)} alt={image.altText || `Imagen ${productImageCarouselStart + index + 1}`} />
+              {image.isPrimary && <span aria-hidden='true'>★</span>}
+            </button>
+          ) : (
+            <button
+              aria-label='Agregar imagen'
+              className='articulos-ui__product-thumb articulos-ui__product-thumb--empty'
+              key={`empty-${index}`}
+              onClick={handleAddProductImageClick}
+              type='button'
+            >
+              +
+            </button>
+          )
+        })}
+        <button
+          className='articulos-ui__product-thumbs-arrow'
+          disabled={productImages.length < 2}
+          onClick={handleNextProductImage}
+          type='button'
+          aria-label='Imagen siguiente'
+        >
+          ›
+        </button>
+      </div>
+
+      {variant === 'full' && (
+        <p className='articulos-ui__product-image-count'>
+          {productImages.length === 0 ? '0 de 4 imágenes' : `${Math.min(productImageCarouselStart + 1, productImages.length)} de ${productImages.length} imágenes`}
+        </p>
+      )}
+    </aside>
+  )
+
+  const productPrimaryActionLabel = activeProductTab === 'atributos' ? 'Guardar' : 'Guardar y continuar'
+  const productModalModeLabel = productModalMode === 'edit' ? 'Editar' : 'Agregar'
   const resultsEmptyMessage = isLoadingProducts
     ? 'Cargando artículos...'
     : apiError ?? 'Sin coincidencias para mostrar.'
@@ -1060,15 +1586,6 @@ export const Articulos = () => {
                             onClick={(event) => event.stopPropagation()}
                             onDoubleClick={(event) => event.stopPropagation()}
                           >
-                            <button
-                              aria-label='Disminuir existencias'
-                              className='articulos-ui__stock-adjuster-button'
-                              disabled={isAdjustingProduct}
-                              onClick={decrementAdjustmentQuantity}
-                              type='button'
-                            >
-                              -
-                            </button>
                             <input
                               aria-invalid={Boolean(adjustmentError)}
                               aria-label='Nueva cantidad de existencias'
@@ -1093,15 +1610,6 @@ export const Articulos = () => {
                               type='text'
                               value={adjustmentQuantityDraft}
                             />
-                            <button
-                              aria-label='Aumentar existencias'
-                              className='articulos-ui__stock-adjuster-button'
-                              disabled={isAdjustingProduct}
-                              onClick={incrementAdjustmentQuantity}
-                              type='button'
-                            >
-                              +
-                            </button>
                           </div>
                         ) : (
                           product.inventory.quantity ?? '-'
@@ -1155,13 +1663,34 @@ export const Articulos = () => {
             <h2 className='articulos-ui__detail-title'>Artículo Seleccionado</h2>
 
             <div className='articulos-ui__preview'>
-              <button type='button' className='articulos-ui__preview-arrow' aria-label='Imagen anterior'>
+              <button
+                type='button'
+                className='articulos-ui__preview-arrow'
+                aria-label='Imagen anterior'
+                disabled={selectedProductImages.length < 2}
+                onClick={handlePreviousSelectedProductImage}
+              >
                 ❮
               </button>
               <div className='articulos-ui__preview-placeholder' aria-label='Imagen del artículo'>
-                📷
+                {activeSelectedProductImage ? (
+                  <div
+                    aria-label={activeSelectedProductImage.altText || selectedProduct?.general.name || 'Imagen del artículo'}
+                    className='articulos-ui__preview-image'
+                    role='img'
+                    style={{ backgroundImage: `url(${getProductImageDisplayUrl(activeSelectedProductImage)})` }}
+                  />
+                ) : (
+                  <span aria-hidden='true'>📷</span>
+                )}
               </div>
-              <button type='button' className='articulos-ui__preview-arrow' aria-label='Imagen siguiente'>
+              <button
+                type='button'
+                className='articulos-ui__preview-arrow'
+                aria-label='Imagen siguiente'
+                disabled={selectedProductImages.length < 2}
+                onClick={handleNextSelectedProductImage}
+              >
                 ❯
               </button>
             </div>
@@ -1218,7 +1747,13 @@ export const Articulos = () => {
               <div className='articulos-ui__product-modal'>
                 <header className='articulos-ui__product-modal-header'>
                   <div className='articulos-ui__product-modal-title-row'>
-                    <h2 className='articulos-ui__product-modal-title'>{productModalTitle}</h2>
+                    <span className='articulos-ui__product-modal-icon' aria-hidden='true'>▧</span>
+                    <h2 className='articulos-ui__product-modal-title'>Datos del producto</h2>
+                    <span className='articulos-ui__product-modal-mode' aria-hidden='true'>•</span>
+                    <span className='articulos-ui__product-modal-mode'>{productModalModeLabel}</span>
+                  </div>
+
+                  <div className='articulos-ui__product-modal-controls'>
                     <label className='articulos-ui__product-type-label'>
                       <span className='articulos-ui__product-type-text'>Tipo de producto</span>
                       <select
@@ -1233,106 +1768,136 @@ export const Articulos = () => {
                         ))}
                       </select>
                     </label>
-                  </div>
 
-                  <button
-                    aria-label='Cerrar ventana modal'
-                    className='articulos-ui__product-modal-close'
-                    onClick={handleCloseActionModal}
-                    type='button'
-                  >
-                    ×
-                  </button>
+                    <button
+                      aria-label='Cerrar ventana modal'
+                      className='articulos-ui__product-modal-close'
+                      onClick={handleCloseActionModal}
+                      type='button'
+                    >
+                      ×
+                    </button>
+                  </div>
                 </header>
 
-                <div className='articulos-ui__product-modal-layout'>
-                  <section className='articulos-ui__product-form-panel'>
-                    <nav className='articulos-ui__product-tabs' aria-label='Secciones del producto'>
-                      {productTabs.map((tab) => (
-                        <button
-                          key={tab.id}
-                          className={`articulos-ui__product-tab ${activeProductTab === tab.id ? 'articulos-ui__product-tab--active' : ''}`}
-                          onClick={() => setActiveProductTab(tab.id)}
-                          type='button'
-                        >
-                          {tab.label}
-                        </button>
-                      ))}
-                    </nav>
+                <main className='articulos-ui__product-modal-main'>
+                  <nav className='articulos-ui__product-tabs' aria-label='Secciones del producto'>
+                    {productTabs.map((tab) => (
+                      <button
+                        key={tab.id}
+                        className={`articulos-ui__product-tab ${activeProductTab === tab.id ? 'articulos-ui__product-tab--active' : ''}`}
+                        onClick={() => setActiveProductTab(tab.id)}
+                        type='button'
+                      >
+                        <span className='articulos-ui__product-tab-icon' aria-hidden='true'>
+                          {tab.id === 'general' ? '▤' : tab.id === 'inventario' ? '□' : '◇'}
+                        </span>
+                        <span>{tab.label}</span>
+                      </button>
+                    ))}
+                  </nav>
 
-                    <div className='articulos-ui__product-tab-panel'>
+                  <div className='articulos-ui__product-tab-panel'>
                       {activeProductTab === 'general' ? (
-                        <div className='articulos-ui__product-general-grid'>
-                          <label className='articulos-ui__product-field articulos-ui__product-field--name'>
-                            <span className='articulos-ui__product-label'>Nombre del producto:</span>
-                            <input
-                              aria-invalid={Boolean(simpleProductErrors.name)}
-                              className='articulos-ui__product-input'
-                              onChange={(event) => updateSimpleProductGeneral({ name: event.target.value })}
-                              required
-                              type='text'
-                              value={simpleProductDraft.general.name}
-                            />
-                            {simpleProductErrors.name && (
-                              <span className='articulos-ui__product-error'>{simpleProductErrors.name}</span>
-                            )}
-                          </label>
-
-                          <label className='articulos-ui__product-field articulos-ui__product-field--short'>
-                            <span className='articulos-ui__product-label'>Descripción corta:</span>
-                            <input
-                              aria-invalid={Boolean(simpleProductErrors.shortDescription)}
-                              className='articulos-ui__product-input'
-                              onChange={(event) => updateSimpleProductGeneral({ shortDescription: event.target.value })}
-                              required
-                              type='text'
-                              value={simpleProductDraft.general.shortDescription}
-                            />
-                            {simpleProductErrors.shortDescription && (
-                              <span className='articulos-ui__product-error'>{simpleProductErrors.shortDescription}</span>
-                            )}
-                          </label>
-
-                          <label className='articulos-ui__product-field articulos-ui__product-field--large'>
-                            <span className='articulos-ui__product-label'>Descripción amplia:</span>
-                            <textarea
-                              className='articulos-ui__product-textarea'
-                              onChange={(event) => updateSimpleProductGeneral({ longDescription: event.target.value })}
-                              value={simpleProductDraft.general.longDescription}
-                            />
-                          </label>
-
-                          <div className='articulos-ui__product-price-grid'>
-                            <label className='articulos-ui__product-price-field'>
-                              <span className='articulos-ui__product-label'>Precio regular:</span>
+                        <div className='articulos-ui__product-general-layout'>
+                          <div className='articulos-ui__product-general-grid'>
+                            <label className='articulos-ui__product-field'>
+                              <span className='articulos-ui__product-label'>
+                                Nombre del producto <span className='articulos-ui__product-required'>*</span>
+                              </span>
                               <input
-                                aria-invalid={Boolean(simpleProductErrors.regularPrice)}
-                                className='articulos-ui__product-input articulos-ui__product-input--price'
-                                inputMode='decimal'
-                                onChange={(event) => updateSimpleProductGeneral({ regularPrice: parseNumberInput(event.target.value) })}
+                                aria-invalid={Boolean(simpleProductErrors.name)}
+                                className='articulos-ui__product-input'
+                                onChange={(event) => updateSimpleProductGeneral({ name: event.target.value })}
                                 required
                                 type='text'
-                                value={simpleProductDraft.general.regularPrice ?? ''}
+                                value={simpleProductDraft.general.name}
                               />
-                              {simpleProductErrors.regularPrice && (
-                                <span className='articulos-ui__product-error'>{simpleProductErrors.regularPrice}</span>
+                              {simpleProductErrors.name && (
+                                <span className='articulos-ui__product-error'>{simpleProductErrors.name}</span>
                               )}
                             </label>
 
-                            <label className='articulos-ui__product-price-field'>
-                              <span className='articulos-ui__product-label'>Precio rebajado:</span>
+                            <label className='articulos-ui__product-field'>
+                              <span className='articulos-ui__product-label'>Descripción corta</span>
                               <input
-                                className='articulos-ui__product-input articulos-ui__product-input--price'
-                                inputMode='decimal'
-                                onChange={(event) => updateSimpleProductGeneral({ salePrice: parseNumberInput(event.target.value) })}
+                                aria-invalid={Boolean(simpleProductErrors.shortDescription)}
+                                className='articulos-ui__product-input'
+                                maxLength={SHORT_DESCRIPTION_MAX_LENGTH}
+                                onChange={(event) => updateSimpleProductGeneral({ shortDescription: event.target.value })}
+                                required
                                 type='text'
-                                value={simpleProductDraft.general.salePrice ?? ''}
+                                value={simpleProductDraft.general.shortDescription}
                               />
+                              <span className='articulos-ui__product-counter'>
+                                {simpleProductDraft.general.shortDescription.length}/{SHORT_DESCRIPTION_MAX_LENGTH}
+                              </span>
+                              {simpleProductErrors.shortDescription && (
+                                <span className='articulos-ui__product-error'>{simpleProductErrors.shortDescription}</span>
+                              )}
                             </label>
+
+                            <label className='articulos-ui__product-field'>
+                              <span className='articulos-ui__product-label'>Descripción amplia</span>
+                              <textarea
+                                className='articulos-ui__product-textarea'
+                                maxLength={LONG_DESCRIPTION_MAX_LENGTH}
+                                onChange={(event) => updateSimpleProductGeneral({ longDescription: event.target.value })}
+                                value={simpleProductDraft.general.longDescription}
+                              />
+                              <span className='articulos-ui__product-counter'>
+                                {simpleProductDraft.general.longDescription.length}/{LONG_DESCRIPTION_MAX_LENGTH}
+                              </span>
+                            </label>
+
+                            <div className='articulos-ui__product-price-grid'>
+                              <label className='articulos-ui__product-price-field'>
+                                <span className='articulos-ui__product-label'>
+                                  Precio regular <span className='articulos-ui__product-required'>*</span>
+                                </span>
+                                <span className='articulos-ui__product-price-input-wrap'>
+                                  <span className='articulos-ui__product-price-prefix' aria-hidden='true'>$</span>
+                                  <input
+                                    aria-invalid={Boolean(simpleProductErrors.regularPrice)}
+                                    className='articulos-ui__product-input articulos-ui__product-input--price'
+                                    inputMode='decimal'
+                                    onChange={(event) => updateSimpleProductGeneral({ regularPrice: parseNumberInput(event.target.value) })}
+                                    required
+                                    type='text'
+                                    value={simpleProductDraft.general.regularPrice ?? ''}
+                                  />
+                                </span>
+                                {simpleProductErrors.regularPrice && (
+                                  <span className='articulos-ui__product-error'>{simpleProductErrors.regularPrice}</span>
+                                )}
+                              </label>
+
+                              <label className='articulos-ui__product-price-field'>
+                                <span className='articulos-ui__product-label'>Precio rebajado</span>
+                                <span className='articulos-ui__product-price-input-wrap'>
+                                  <span className='articulos-ui__product-price-prefix' aria-hidden='true'>$</span>
+                                  <input
+                                    className='articulos-ui__product-input articulos-ui__product-input--price'
+                                    inputMode='decimal'
+                                    onChange={(event) => updateSimpleProductGeneral({ salePrice: parseNumberInput(event.target.value) })}
+                                    type='text'
+                                    value={simpleProductDraft.general.salePrice ?? ''}
+                                  />
+                                </span>
+                              </label>
+                            </div>
+
+                            <p className='articulos-ui__product-price-note'>
+                              <span aria-hidden='true'>i</span>
+                              Si el precio rebajado está vacío, el producto no tendrá descuento.
+                            </p>
                           </div>
+
+                          {renderProductImagePanel()}
                         </div>
                       ) : activeProductTab === 'inventario' ? (
-                        <div className='articulos-ui__inventory-form'>
+                        <div className='articulos-ui__inventory-layout'>
+                          <div className='articulos-ui__inventory-form'>
                           <label className='articulos-ui__inventory-field'>
                             <span className='articulos-ui__inventory-label articulos-ui__inventory-label--link'>SKU</span>
                             <input
@@ -1454,6 +2019,9 @@ export const Articulos = () => {
                               </button>
                             </fieldset>
                           )}
+                          </div>
+
+                          {renderProductImagePanel('compact')}
                         </div>
                       ) : (
                         <div className='articulos-ui__attributes-form'>
@@ -1535,41 +2103,42 @@ export const Articulos = () => {
                           </section>
                         </div>
                       )}
-                    </div>
-                  </section>
+                  </div>
+                </main>
 
-                  <aside className='articulos-ui__product-image-panel'>
-                    <button className='articulos-ui__product-image-button' type='button'>
-                      Agregar imagen
-                    </button>
+                <footer className='articulos-ui__product-modal-footer'>
+                  <button
+                    className='articulos-ui__product-save'
+                    disabled={isSavingProduct}
+                    onClick={handleProductModalPrimaryAction}
+                    type='button'
+                  >
+                    {isSavingProduct ? 'Guardando...' : productPrimaryActionLabel}
+                  </button>
+                </footer>
 
-                    <div className='articulos-ui__product-image-preview' aria-label='Vista previa de imagen del producto'>
-                      <span aria-hidden='true'>▥</span>
-                    </div>
-
-                    <div className='articulos-ui__product-thumbs'>
-                      <button className='articulos-ui__product-thumbs-arrow' type='button' aria-label='Imagen anterior'>
-                        ‹
-                      </button>
-                      <div className='articulos-ui__product-thumb articulos-ui__product-thumb--active' />
-                      <div className='articulos-ui__product-thumb' />
-                      <div className='articulos-ui__product-thumb' />
-                      <div className='articulos-ui__product-thumb' />
-                      <button className='articulos-ui__product-thumbs-arrow' type='button' aria-label='Imagen siguiente'>
-                        ›
-                      </button>
-                    </div>
-
+                {activeProductImage && isProductImageExpanded && (
+                  <div
+                    className='articulos-ui__product-image-expanded'
+                    role='dialog'
+                    aria-modal='true'
+                    aria-label={activeProductImage.altText || simpleProductDraft.general.name || 'Imagen ampliada'}
+                  >
                     <button
-                      className='articulos-ui__product-save'
-                      disabled={isSavingProduct}
-                      onClick={handleProductModalPrimaryAction}
+                      aria-label='Cerrar imagen ampliada'
+                      className='articulos-ui__product-image-expanded-close'
+                      onClick={handleCloseProductImageExpanded}
                       type='button'
                     >
-                      {isSavingProduct ? 'Guardando...' : productPrimaryActionLabel}
+                      ×
                     </button>
-                  </aside>
-                </div>
+                    <img
+                      alt={activeProductImage.altText || simpleProductDraft.general.name || 'Imagen ampliada'}
+                      className='articulos-ui__product-image-expanded-img'
+                      src={getProductImageDisplayUrl(activeProductImage)}
+                    />
+                  </div>
+                )}
               </div>
             </Modal>
           )
