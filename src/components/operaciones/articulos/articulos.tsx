@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import './style.css'
 import { Modal } from '../../ventanaModal/modal'
+import { useSession } from '../../../context/SessionContext'
 
 type ActionButton = {
   id: string
@@ -74,6 +75,29 @@ type SimpleProduct = {
 }
 
 type SimpleProductValidationErrors = Partial<Record<'name' | 'shortDescription' | 'regularPrice' | 'sku', string>>
+
+type ProductListResponse = {
+  items: SimpleProduct[]
+  page: number
+  limit: number
+  total: number
+}
+
+type ProductWritePayload = {
+  type: ProductType
+  general: SimpleProduct['general']
+  inventory: SimpleProduct['inventory']
+  attributes: []
+  media: {
+    images: []
+  }
+}
+
+type ApiRequestOptions = {
+  apiBaseUrl: string
+  tokenType: string
+  accessToken: string
+}
 
 const topActions: ActionButton[] = [
   { id: 'agregar', label: 'Agregar', shortcut: '(F3)', icon: '➕' },
@@ -200,7 +224,84 @@ const parseNumberInput = (value: string) => {
   return Number.isNaN(parsedValue) ? null : parsedValue
 }
 
+const formatProductPrice = (price: number | null) => (
+  price !== null ? `$${price.toFixed(2)}` : '-'
+)
+
+const stockStatusLabels: Record<StockStatus, string> = {
+  in_stock: 'Hay existencias',
+  out_of_stock: 'Sin existencias',
+  backorder: 'Se puede reservar',
+}
+
+const getApiErrorMessage = async (response: Response) => {
+  let detail: unknown = null
+
+  try {
+    const body = await response.json()
+    detail = body?.detail
+  } catch {
+    detail = null
+  }
+
+  if (response.status === 401 || response.status === 403) {
+    return 'Tu sesión no tiene permiso para realizar esta acción.'
+  }
+
+  if (response.status === 404) {
+    return 'El artículo ya no existe o no está disponible.'
+  }
+
+  if (response.status === 409) {
+    return 'El SKU ya existe. Ingresa un SKU diferente.'
+  }
+
+  if (response.status === 422) {
+    return 'La API rechazó los datos del artículo. Revisa los campos capturados.'
+  }
+
+  if (typeof detail === 'string') {
+    return detail
+  }
+
+  return 'No fue posible completar la operación.'
+}
+
+const requestArticulosApi = async <T,>(
+  options: ApiRequestOptions,
+  path: string,
+  init: RequestInit = {},
+): Promise<T> => {
+  let response: Response
+
+  try {
+    response = await fetch(`${options.apiBaseUrl}/articulos${path}`, {
+      ...init,
+      headers: {
+        ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+        ...init.headers,
+        Authorization: `${options.tokenType} ${options.accessToken}`,
+      },
+    })
+  } catch {
+    throw new Error('No fue posible conectar con la API.')
+  }
+
+  if (!response.ok) {
+    throw new Error(await getApiErrorMessage(response))
+  }
+
+  return response.json() as Promise<T>
+}
+
 export const Articulos = () => {
+  const {
+    accessToken,
+    apiBaseUrl,
+    isBootstrapping,
+    isAuthenticated,
+    tokenType,
+  } = useSession()
   const [openActionId, setOpenActionId] = useState<ActionButton['id'] | null>(null)
   const [activeProductTab, setActiveProductTab] = useState<ProductTab>('general')
   const [productType, setProductType] = useState<ProductTypeOption>(productTypeOptions[0])
@@ -208,36 +309,94 @@ export const Articulos = () => {
   const [simpleProductDraft, setSimpleProductDraft] = useState<SimpleProduct>(() => createEmptySimpleProduct())
   const [simpleProducts, setSimpleProducts] = useState<SimpleProduct[]>([])
   const [currentProductPage, setCurrentProductPage] = useState(1)
+  const [totalProducts, setTotalProducts] = useState(0)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [activeSearchQuery, setActiveSearchQuery] = useState('')
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
   const [adjustingProductId, setAdjustingProductId] = useState<string | null>(null)
   const [adjustmentQuantityDraft, setAdjustmentQuantityDraft] = useState('')
   const [adjustmentError, setAdjustmentError] = useState<string | null>(null)
   const [simpleProductErrors, setSimpleProductErrors] = useState<SimpleProductValidationErrors>({})
   const [productModalError, setProductModalError] = useState<string | null>(null)
+  const [apiError, setApiError] = useState<string | null>(null)
+  const [isLoadingProducts, setIsLoadingProducts] = useState(false)
+  const [isSavingProduct, setIsSavingProduct] = useState(false)
+  const [isDeletingProduct, setIsDeletingProduct] = useState(false)
+  const [isAdjustingProduct, setIsAdjustingProduct] = useState(false)
 
   const trackInventory = simpleProductDraft.inventory.trackingMode === 'tracked'
   const primaryAttribute = simpleProductDraft.attributes[0]
   const isProductModalOpen = openActionId === 'agregar' || openActionId === 'editar'
-  const totalProductPages = Math.ceil(simpleProducts.length / PRODUCTS_PER_PAGE)
+  const totalProductPages = Math.ceil(totalProducts / PRODUCTS_PER_PAGE)
   const currentProductPageLabel = totalProductPages === 0 ? 0 : currentProductPage
-  const pageStartIndex = (currentProductPage - 1) * PRODUCTS_PER_PAGE
-  const paginatedProducts = simpleProducts.slice(pageStartIndex, pageStartIndex + PRODUCTS_PER_PAGE)
+  const paginatedProducts = simpleProducts
   const canGoToPreviousProductPage = totalProductPages > 0 && currentProductPage > 1
   const canGoToNextProductPage = totalProductPages > 0 && currentProductPage < totalProductPages
+  const selectedProduct = simpleProducts.find((product) => product.id === selectedProductId) ?? null
+  const canUseApi = isAuthenticated && Boolean(accessToken && tokenType)
+  const apiRequestOptions = accessToken && tokenType
+    ? { accessToken, apiBaseUrl, tokenType }
+    : null
 
-  useEffect(() => {
-    if (totalProductPages === 0) {
-      if (currentProductPage !== 1) {
-        setCurrentProductPage(1)
-      }
+  const fetchProducts = useCallback(async (page: number, query: string) => {
+    if (isBootstrapping) {
+      return
+    }
+
+    if (!accessToken || !tokenType) {
+      setSimpleProducts([])
+      setTotalProducts(0)
+      setApiError('Inicia sesión para consultar artículos.')
 
       return
     }
 
-    if (currentProductPage > totalProductPages) {
-      setCurrentProductPage(totalProductPages)
+    setIsLoadingProducts(true)
+    setApiError(null)
+
+    try {
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(PRODUCTS_PER_PAGE),
+      })
+      const trimmedQuery = query.trim()
+
+      if (trimmedQuery) {
+        params.set('q', trimmedQuery)
+      }
+
+      const response = await requestArticulosApi<ProductListResponse>(
+        { accessToken, apiBaseUrl, tokenType },
+        `/recargar?${params.toString()}`,
+      )
+      const nextTotalPages = Math.ceil(response.total / PRODUCTS_PER_PAGE)
+
+      setSimpleProducts(response.items)
+      setTotalProducts(response.total)
+
+      setSelectedProductId((currentSelectedProductId) => (
+        currentSelectedProductId && !response.items.some((product) => product.id === currentSelectedProductId)
+          ? null
+          : currentSelectedProductId
+      ))
+
+      if (response.total === 0 && page !== 1) {
+        setCurrentProductPage(1)
+      }
+
+      if (nextTotalPages > 0 && page > nextTotalPages) {
+        setCurrentProductPage(nextTotalPages)
+      }
+    } catch (error) {
+      setApiError(error instanceof Error ? error.message : 'No fue posible cargar artículos.')
+    } finally {
+      setIsLoadingProducts(false)
     }
-  }, [currentProductPage, totalProductPages])
+  }, [accessToken, apiBaseUrl, isBootstrapping, tokenType])
+
+  useEffect(() => {
+    fetchProducts(currentProductPage, activeSearchQuery)
+  }, [activeSearchQuery, currentProductPage, fetchProducts])
 
   useEffect(() => {
     const handleEscapeSelection = (event: KeyboardEvent) => {
@@ -283,7 +442,16 @@ export const Articulos = () => {
     return Number(adjustmentQuantityDraft)
   }
 
-  const confirmProductAdjustment = () => {
+  const replaceProductInList = (updatedProduct: SimpleProduct) => {
+    setSimpleProducts((currentProducts) => (
+      currentProducts.map((product) => (
+        product.id === updatedProduct.id ? updatedProduct : product
+      ))
+    ))
+    setSelectedProductId(updatedProduct.id)
+  }
+
+  const confirmProductAdjustment = async () => {
     const nextQuantity = parseAdjustmentQuantity()
 
     if (nextQuantity === null) {
@@ -292,24 +460,37 @@ export const Articulos = () => {
       return
     }
 
-    setSimpleProducts((currentProducts) => (
-      currentProducts.map((product) => (
-        product.id === adjustingProductId
-          ? {
-              ...product,
-              inventory: {
-                ...product.inventory,
-                quantity: nextQuantity,
-              },
-              metadata: {
-                ...product.metadata,
-                updatedAt: new Date().toISOString(),
-              },
-            }
-          : product
-      ))
-    ))
-    clearAdjustment()
+    if (!apiRequestOptions || !adjustingProductId) {
+      setProductModalError('Inicia sesión para ajustar existencias.')
+
+      return
+    }
+
+    setIsAdjustingProduct(true)
+    setAdjustmentError(null)
+    setApiError(null)
+
+    try {
+      const updatedProduct = await requestArticulosApi<SimpleProduct>(
+        apiRequestOptions,
+        `/${adjustingProductId}/ajustar`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            cantidad: nextQuantity,
+            motivo: 'Ajuste manual desde artículos',
+            referencia: null,
+          }),
+        },
+      )
+
+      replaceProductInList(updatedProduct)
+      clearAdjustment()
+    } catch (error) {
+      setAdjustmentError(error instanceof Error ? error.message : 'No fue posible ajustar existencias.')
+    } finally {
+      setIsAdjustingProduct(false)
+    }
   }
 
   const decrementAdjustmentQuantity = () => {
@@ -326,7 +507,26 @@ export const Articulos = () => {
     setAdjustmentError(null)
   }
 
-  const handleOpenActionModal = (actionId: ActionButton['id']) => {
+  const reloadCurrentProducts = () => {
+    fetchProducts(currentProductPage, activeSearchQuery)
+  }
+
+  const handleSearchProducts = () => {
+    clearAdjustment()
+    setSelectedProductId(null)
+    setActiveSearchQuery(searchQuery.trim())
+    setCurrentProductPage(1)
+  }
+
+  const handleOpenActionModal = async (actionId: ActionButton['id']) => {
+    if ((actionId === 'agregar' || actionId === 'editar' || actionId === 'eliminar' || actionId === 'ajustar' || actionId === 'clonar') && !canUseApi) {
+      setProductModalError('Inicia sesión para gestionar artículos.')
+
+      return
+    }
+
+    const requestOptions = apiRequestOptions
+
     if (actionId === 'agregar') {
       clearAdjustment()
       setProductModalMode('create')
@@ -334,6 +534,12 @@ export const Articulos = () => {
       setSimpleProductErrors({})
       setActiveProductTab('general')
       setOpenActionId(actionId)
+
+      return
+    }
+
+    if (actionId === 'recargar') {
+      reloadCurrentProducts()
 
       return
     }
@@ -367,15 +573,32 @@ export const Articulos = () => {
       }
 
       clearAdjustment()
-      setSimpleProducts((currentProducts) => (
-        currentProducts.filter((product) => product.id !== selectedProduct.id)
-      ))
-      setCurrentProductPage((currentPage) => {
-        const nextTotalPages = Math.ceil((simpleProducts.length - 1) / PRODUCTS_PER_PAGE)
+      setIsDeletingProduct(true)
+      setApiError(null)
 
-        return Math.max(1, Math.min(currentPage, nextTotalPages || 1))
-      })
-      setSelectedProductId(null)
+      try {
+        await requestArticulosApi<{ message: string; id: string }>(
+          requestOptions as ApiRequestOptions,
+          `/${selectedProduct.id}/eliminar`,
+          { method: 'DELETE' },
+        )
+
+        setSelectedProductId(null)
+        const nextTotalProducts = Math.max(0, totalProducts - 1)
+        const nextTotalPages = Math.ceil(nextTotalProducts / PRODUCTS_PER_PAGE)
+        const nextPage = Math.max(1, Math.min(currentProductPage, nextTotalPages || 1))
+
+        setTotalProducts(nextTotalProducts)
+        if (nextPage !== currentProductPage) {
+          setCurrentProductPage(nextPage)
+        } else {
+          fetchProducts(nextPage, activeSearchQuery)
+        }
+      } catch (error) {
+        setProductModalError(error instanceof Error ? error.message : 'No fue posible eliminar el artículo.')
+      } finally {
+        setIsDeletingProduct(false)
+      }
 
       return
     }
@@ -410,34 +633,27 @@ export const Articulos = () => {
       }
 
       clearAdjustment()
-      const now = new Date().toISOString()
-      const clonedProduct: SimpleProduct = {
-        ...selectedProduct,
-        id: createClientId('prod'),
-        general: {
-          ...selectedProduct.general,
-          name: `${selectedProduct.general.name} (clon)`,
-        },
-        attributes: selectedProduct.attributes.map((attribute) => ({
-          ...attribute,
-          id: createClientId('attr'),
-        })),
-        media: {
-          images: selectedProduct.media.images.map((image) => ({
-            ...image,
-            id: createClientId('img'),
-          })),
-        },
-        metadata: {
-          ...selectedProduct.metadata,
-          createdAt: now,
-          updatedAt: now,
-        },
-      }
+      setIsSavingProduct(true)
+      setApiError(null)
 
-      setSimpleProducts((currentProducts) => [...currentProducts, clonedProduct])
-      setCurrentProductPage(Math.ceil((simpleProducts.length + 1) / PRODUCTS_PER_PAGE))
-      setSelectedProductId(clonedProduct.id)
+      try {
+        const clonedProduct = await requestArticulosApi<SimpleProduct>(
+          requestOptions as ApiRequestOptions,
+          `/${selectedProduct.id}/clonar`,
+          {
+            method: 'POST',
+            body: JSON.stringify({}),
+          },
+        )
+
+        setSelectedProductId(clonedProduct.id)
+        setCurrentProductPage(1)
+        fetchProducts(1, activeSearchQuery)
+      } catch (error) {
+        setProductModalError(error instanceof Error ? error.message : 'No fue posible clonar el artículo.')
+      } finally {
+        setIsSavingProduct(false)
+      }
 
       return
     }
@@ -604,6 +820,21 @@ export const Articulos = () => {
     }
   }
 
+  const buildProductWritePayload = (product: SimpleProduct): ProductWritePayload => ({
+    type: 'simple',
+    general: product.general,
+    inventory: {
+      ...product.inventory,
+      quantity: product.inventory.trackingMode === 'tracked' ? product.inventory.quantity : null,
+      reservationPolicy: product.inventory.trackingMode === 'tracked' ? product.inventory.reservationPolicy : null,
+      lowStockThreshold: product.inventory.trackingMode === 'tracked' ? product.inventory.lowStockThreshold : null,
+    },
+    attributes: [],
+    media: {
+      images: [],
+    },
+  })
+
   const validateSimpleProductGeneral = (product: SimpleProduct) => {
     const validationErrors: SimpleProductValidationErrors = {}
 
@@ -632,7 +863,7 @@ export const Articulos = () => {
     return validationErrors
   }
 
-  const handleProductModalPrimaryAction = () => {
+  const handleProductModalPrimaryAction = async () => {
     const productToSave = buildSimpleProductToSave()
 
     if (activeProductTab === 'general') {
@@ -677,17 +908,53 @@ export const Articulos = () => {
       return
     }
 
+    if (!apiRequestOptions) {
+      setProductModalError('Inicia sesión para guardar artículos.')
+
+      return
+    }
+
+    setIsSavingProduct(true)
+    setApiError(null)
+
     if (productModalMode === 'edit') {
-      setSimpleProducts((currentProducts) => (
-        currentProducts.map((product) => (
-          product.id === productToSave.id ? productToSave : product
-        ))
-      ))
-      setSelectedProductId(productToSave.id)
+      try {
+        const updatedProduct = await requestArticulosApi<SimpleProduct>(
+          apiRequestOptions,
+          `/${productToSave.id}/editar`,
+          {
+            method: 'PATCH',
+            body: JSON.stringify(buildProductWritePayload(productToSave)),
+          },
+        )
+
+        replaceProductInList(updatedProduct)
+      } catch (error) {
+        setProductModalError(error instanceof Error ? error.message : 'No fue posible actualizar el artículo.')
+        setIsSavingProduct(false)
+
+        return
+      }
     } else {
-      setSimpleProducts((currentProducts) => [...currentProducts, productToSave])
-      setCurrentProductPage(Math.ceil((simpleProducts.length + 1) / PRODUCTS_PER_PAGE))
-      setSelectedProductId(productToSave.id)
+      try {
+        const createdProduct = await requestArticulosApi<SimpleProduct>(
+          apiRequestOptions,
+          '/agregar',
+          {
+            method: 'POST',
+            body: JSON.stringify(buildProductWritePayload(productToSave)),
+          },
+        )
+
+        setSelectedProductId(createdProduct.id)
+        setCurrentProductPage(1)
+        fetchProducts(1, activeSearchQuery)
+      } catch (error) {
+        setProductModalError(error instanceof Error ? error.message : 'No fue posible crear el artículo.')
+        setIsSavingProduct(false)
+
+        return
+      }
     }
 
     setSimpleProductDraft(createEmptySimpleProduct())
@@ -695,11 +962,15 @@ export const Articulos = () => {
     setActiveProductTab('general')
     setProductModalMode('create')
     clearAdjustment()
+    setIsSavingProduct(false)
     handleCloseActionModal()
   }
 
   const productPrimaryActionLabel = activeProductTab === 'atributos' ? 'Guardar' : 'Siguiente'
   const productModalTitle = `Datos del producto - ${productModalMode === 'edit' ? 'Editar' : 'Agregar'}`
+  const resultsEmptyMessage = isLoadingProducts
+    ? 'Cargando artículos...'
+    : apiError ?? 'Sin coincidencias para mostrar.'
 
   return (
     <section className='articulos-ui'>
@@ -709,6 +980,7 @@ export const Articulos = () => {
             key={action.id}
             className='articulos-ui__top-action'
             onClick={() => handleOpenActionModal(action.id)}
+            disabled={isLoadingProducts || isSavingProduct || isDeletingProduct || isAdjustingProduct}
             type='button'
           >
             <span className='articulos-ui__top-icon' aria-hidden='true'>
@@ -732,8 +1004,22 @@ export const Articulos = () => {
                 className='articulos-ui__search-input'
                 type='text'
                 placeholder='Ingresa código de barras, folio o nombre del artículo que quieres consultar.'
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    handleSearchProducts()
+                  }
+                }}
               />
-              <button type='button' className='articulos-ui__search-button' aria-label='Buscar artículo'>
+              <button
+                type='button'
+                className='articulos-ui__search-button'
+                aria-label='Buscar artículo'
+                disabled={isLoadingProducts}
+                onClick={handleSearchProducts}
+              >
                 🔎
               </button>
             </div>
@@ -752,7 +1038,7 @@ export const Articulos = () => {
               </div>
               <div className='articulos-ui__results-body' role='rowgroup'>
                 {simpleProducts.length === 0 ? (
-                  <p className='articulos-ui__results-empty'>Sin coincidencias para mostrar.</p>
+                  <p className='articulos-ui__results-empty'>{resultsEmptyMessage}</p>
                 ) : (
                   paginatedProducts.map((product) => (
                     <div
@@ -777,6 +1063,7 @@ export const Articulos = () => {
                             <button
                               aria-label='Disminuir existencias'
                               className='articulos-ui__stock-adjuster-button'
+                              disabled={isAdjustingProduct}
                               onClick={decrementAdjustmentQuantity}
                               type='button'
                             >
@@ -786,6 +1073,7 @@ export const Articulos = () => {
                               aria-invalid={Boolean(adjustmentError)}
                               aria-label='Nueva cantidad de existencias'
                               className='articulos-ui__stock-adjuster-input'
+                              disabled={isAdjustingProduct}
                               inputMode='numeric'
                               onChange={(event) => {
                                 setAdjustmentQuantityDraft(event.target.value)
@@ -808,6 +1096,7 @@ export const Articulos = () => {
                             <button
                               aria-label='Aumentar existencias'
                               className='articulos-ui__stock-adjuster-button'
+                              disabled={isAdjustingProduct}
                               onClick={incrementAdjustmentQuantity}
                               type='button'
                             >
@@ -819,7 +1108,7 @@ export const Articulos = () => {
                         )}
                       </div>
                       <div className='articulos-ui__results-data articulos-ui__results-cell--price' role='cell'>
-                        {product.general.regularPrice !== null ? `$${product.general.regularPrice.toFixed(2)}` : '-'}
+                        {formatProductPrice(product.general.regularPrice)}
                       </div>
                       <div className='articulos-ui__results-data articulos-ui__results-cell--icon' role='cell'>-</div>
                       <div className='articulos-ui__results-data articulos-ui__results-cell--icon' role='cell'>-</div>
@@ -877,10 +1166,35 @@ export const Articulos = () => {
               </button>
             </div>
 
-            <div className='articulos-ui__detail-empty'>
-              <span>-</span>
-              <span>-</span>
-            </div>
+            {selectedProduct ? (
+              <dl className='articulos-ui__detail-list'>
+                <div>
+                  <dt>SKU</dt>
+                  <dd>{selectedProduct.inventory.sku}</dd>
+                </div>
+                <div>
+                  <dt>Nombre</dt>
+                  <dd>{selectedProduct.general.name}</dd>
+                </div>
+                <div>
+                  <dt>Precio</dt>
+                  <dd>{formatProductPrice(selectedProduct.general.regularPrice)}</dd>
+                </div>
+                <div>
+                  <dt>Existencias</dt>
+                  <dd>{selectedProduct.inventory.quantity ?? '-'}</dd>
+                </div>
+                <div>
+                  <dt>Estado</dt>
+                  <dd>{stockStatusLabels[selectedProduct.inventory.stockStatus]}</dd>
+                </div>
+              </dl>
+            ) : (
+              <div className='articulos-ui__detail-empty'>
+                <span>-</span>
+                <span>-</span>
+              </div>
+            )}
           </aside>
         </div>
       </div>
@@ -1246,8 +1560,13 @@ export const Articulos = () => {
                       </button>
                     </div>
 
-                    <button className='articulos-ui__product-save' onClick={handleProductModalPrimaryAction} type='button'>
-                      {productPrimaryActionLabel}
+                    <button
+                      className='articulos-ui__product-save'
+                      disabled={isSavingProduct}
+                      onClick={handleProductModalPrimaryAction}
+                      type='button'
+                    >
+                      {isSavingProduct ? 'Guardando...' : productPrimaryActionLabel}
                     </button>
                   </aside>
                 </div>
