@@ -168,6 +168,7 @@ const productTypeOptions: ProductTypeOption[] = ['Producto simple', 'Producto co
 const PRODUCTS_PER_PAGE = 20
 const SHORT_DESCRIPTION_MAX_LENGTH = 150
 const LONG_DESCRIPTION_MAX_LENGTH = 1000
+const PRODUCT_DELETE_DELAY_MS = 5000
 
 const createClientId = (prefix: string) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
 
@@ -350,6 +351,7 @@ export const Articulos = () => {
   const [searchQuery, setSearchQuery] = useState('')
   const [activeSearchQuery, setActiveSearchQuery] = useState('')
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
+  const [pendingDeleteProductId, setPendingDeleteProductId] = useState<string | null>(null)
   const [adjustingProductId, setAdjustingProductId] = useState<string | null>(null)
   const [adjustmentQuantityDraft, setAdjustmentQuantityDraft] = useState('')
   const [adjustmentError, setAdjustmentError] = useState<string | null>(null)
@@ -368,6 +370,7 @@ export const Articulos = () => {
   const [productImageObjectUrls, setProductImageObjectUrls] = useState<Record<string, string>>({})
   const productImageInputRef = useRef<HTMLInputElement | null>(null)
   const fetchedProductImageObjectUrlsRef = useRef<string[]>([])
+  const deleteDelayTimeoutRef = useRef<number | null>(null)
 
   const trackInventory = simpleProductDraft.inventory.trackingMode === 'tracked'
   const primaryAttribute = simpleProductDraft.attributes[0]
@@ -460,6 +463,14 @@ export const Articulos = () => {
     }
   ), [])
 
+  useEffect(() => (
+    () => {
+      if (deleteDelayTimeoutRef.current) {
+        window.clearTimeout(deleteDelayTimeoutRef.current)
+      }
+    }
+  ), [])
+
   useEffect(() => {
     if (!accessToken || !tokenType) {
       return
@@ -540,6 +551,13 @@ export const Articulos = () => {
   useEffect(() => {
     const handleEscapeSelection = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !openActionId && !productModalError) {
+        if (pendingDeleteProductId) {
+          event.preventDefault()
+          cancelProductDeleteDelay()
+
+          return
+        }
+
         if (adjustingProductId) {
           event.preventDefault()
           setAdjustingProductId(null)
@@ -558,7 +576,7 @@ export const Articulos = () => {
     return () => {
       window.removeEventListener('keydown', handleEscapeSelection)
     }
-  }, [adjustingProductId, openActionId, productModalError])
+  }, [adjustingProductId, openActionId, pendingDeleteProductId, productModalError])
 
   const clearAdjustment = () => {
     setAdjustingProductId(null)
@@ -636,7 +654,67 @@ export const Articulos = () => {
     fetchProducts(currentProductPage, activeSearchQuery)
   }
 
+  const cancelProductDeleteDelay = () => {
+    if (deleteDelayTimeoutRef.current) {
+      window.clearTimeout(deleteDelayTimeoutRef.current)
+      deleteDelayTimeoutRef.current = null
+    }
+
+    setPendingDeleteProductId(null)
+  }
+
+  const executeProductDelete = async (productId: string, requestOptions: ApiRequestOptions | null) => {
+    if (!requestOptions) {
+      setProductModalError('Inicia sesión para gestionar artículos.')
+      setPendingDeleteProductId(null)
+
+      return
+    }
+
+    setIsDeletingProduct(true)
+    setApiError(null)
+
+    try {
+      await requestArticulosApi<{ message: string; id: string }>(
+        requestOptions,
+        `/${productId}/eliminar`,
+        { method: 'DELETE' },
+      )
+
+      setSelectedProductId(null)
+      const nextTotalProducts = Math.max(0, totalProducts - 1)
+      const nextTotalPages = Math.ceil(nextTotalProducts / PRODUCTS_PER_PAGE)
+      const nextPage = Math.max(1, Math.min(currentProductPage, nextTotalPages || 1))
+
+      setTotalProducts(nextTotalProducts)
+      if (nextPage !== currentProductPage) {
+        setCurrentProductPage(nextPage)
+      } else {
+        fetchProducts(nextPage, activeSearchQuery)
+      }
+    } catch (error) {
+      setProductModalError(error instanceof Error ? error.message : 'No fue posible eliminar el artículo.')
+    } finally {
+      setPendingDeleteProductId(null)
+      setIsDeletingProduct(false)
+    }
+  }
+
+  const startProductDeleteDelay = (product: SimpleProduct, requestOptions: ApiRequestOptions | null) => {
+    cancelProductDeleteDelay()
+    clearAdjustment()
+    setSelectedProductId(product.id)
+    setPendingDeleteProductId(product.id)
+    setApiError(null)
+
+    deleteDelayTimeoutRef.current = window.setTimeout(() => {
+      deleteDelayTimeoutRef.current = null
+      executeProductDelete(product.id, requestOptions)
+    }, PRODUCT_DELETE_DELAY_MS)
+  }
+
   const handleSearchProducts = () => {
+    cancelProductDeleteDelay()
     clearAdjustment()
     setSelectedProductId(null)
     setActiveSearchQuery(searchQuery.trim())
@@ -651,6 +729,14 @@ export const Articulos = () => {
     }
 
     const requestOptions = apiRequestOptions
+
+    if (pendingDeleteProductId) {
+      if (actionId === 'eliminar') {
+        return
+      }
+
+      cancelProductDeleteDelay()
+    }
 
     if (actionId === 'agregar') {
       clearAdjustment()
@@ -708,32 +794,7 @@ export const Articulos = () => {
       }
 
       clearAdjustment()
-      setIsDeletingProduct(true)
-      setApiError(null)
-
-      try {
-        await requestArticulosApi<{ message: string; id: string }>(
-          requestOptions as ApiRequestOptions,
-          `/${selectedProduct.id}/eliminar`,
-          { method: 'DELETE' },
-        )
-
-        setSelectedProductId(null)
-        const nextTotalProducts = Math.max(0, totalProducts - 1)
-        const nextTotalPages = Math.ceil(nextTotalProducts / PRODUCTS_PER_PAGE)
-        const nextPage = Math.max(1, Math.min(currentProductPage, nextTotalPages || 1))
-
-        setTotalProducts(nextTotalProducts)
-        if (nextPage !== currentProductPage) {
-          setCurrentProductPage(nextPage)
-        } else {
-          fetchProducts(nextPage, activeSearchQuery)
-        }
-      } catch (error) {
-        setProductModalError(error instanceof Error ? error.message : 'No fue posible eliminar el artículo.')
-      } finally {
-        setIsDeletingProduct(false)
-      }
+      startProductDeleteDelay(selectedProduct, requestOptions)
 
       return
     }
@@ -805,6 +866,14 @@ export const Articulos = () => {
   }
 
   const handleSelectProduct = (productId: string) => {
+    if (pendingDeleteProductId) {
+      if (pendingDeleteProductId === productId) {
+        cancelProductDeleteDelay()
+      }
+
+      return
+    }
+
     if (adjustingProductId && adjustingProductId !== productId) {
       clearAdjustment()
     }
@@ -813,7 +882,7 @@ export const Articulos = () => {
   }
 
   const handleEditProduct = (product: SimpleProduct) => {
-    if (adjustingProductId === product.id) {
+    if (pendingDeleteProductId || adjustingProductId === product.id) {
       return
     }
 
@@ -832,11 +901,13 @@ export const Articulos = () => {
   }
 
   const handlePreviousProductPage = () => {
+    cancelProductDeleteDelay()
     clearAdjustment()
     setCurrentProductPage((currentPage) => Math.max(1, currentPage - 1))
   }
 
   const handleNextProductPage = () => {
+    cancelProductDeleteDelay()
     clearAdjustment()
     setCurrentProductPage((currentPage) => Math.min(totalProductPages || 1, currentPage + 1))
   }
@@ -1501,22 +1572,32 @@ export const Articulos = () => {
   return (
     <section className='articulos-ui'>
       <header className='articulos-ui__topbar'>
-        {topActions.map((action) => (
-          <button
-            key={action.id}
-            className='articulos-ui__top-action'
-            onClick={() => handleOpenActionModal(action.id)}
-            disabled={isLoadingProducts || isSavingProduct || isDeletingProduct || isAdjustingProduct}
-            type='button'
-          >
-            <span className='articulos-ui__top-icon' aria-hidden='true'>
-              {action.icon}
-            </span>
-            <span className='articulos-ui__top-text'>
-              {action.label} {action.shortcut}
-            </span>
-          </button>
-        ))}
+        {topActions.map((action) => {
+          const isActionDisabled = (
+            isLoadingProducts ||
+            isSavingProduct ||
+            isDeletingProduct ||
+            isAdjustingProduct ||
+            (action.id === 'eliminar' && Boolean(pendingDeleteProductId))
+          )
+
+          return (
+            <button
+              key={action.id}
+              className='articulos-ui__top-action'
+              onClick={() => handleOpenActionModal(action.id)}
+              disabled={isActionDisabled}
+              type='button'
+            >
+              <span className='articulos-ui__top-icon' aria-hidden='true'>
+                {action.icon}
+              </span>
+              <span className='articulos-ui__top-text'>
+                {action.label} {action.shortcut}
+              </span>
+            </button>
+          )
+        })}
       </header>
 
       <div className='articulos-ui__main-wrap'>
@@ -1566,15 +1647,20 @@ export const Articulos = () => {
                 {simpleProducts.length === 0 ? (
                   <p className='articulos-ui__results-empty'>{resultsEmptyMessage}</p>
                 ) : (
-                  paginatedProducts.map((product) => (
-                    <div
-                      aria-selected={selectedProductId === product.id}
-                      className={`articulos-ui__results-row ${selectedProductId === product.id ? 'articulos-ui__results-row--selected' : ''}`}
-                      key={product.id}
-                      onClick={() => handleSelectProduct(product.id)}
-                      onDoubleClick={() => handleEditProduct(product)}
-                      role='row'
-                    >
+                  paginatedProducts.map((product) => {
+                    const isProductSelected = selectedProductId === product.id
+                    const isProductDeletePending = pendingDeleteProductId === product.id
+
+                    return (
+                      <div
+                        aria-label={isProductDeletePending ? 'Cancelar eliminación del artículo' : undefined}
+                        aria-selected={isProductSelected}
+                        className={`articulos-ui__results-row ${isProductSelected ? 'articulos-ui__results-row--selected' : ''} ${isProductDeletePending ? 'articulos-ui__results-row--deleting' : ''}`}
+                        key={product.id}
+                        onClick={() => handleSelectProduct(product.id)}
+                        onDoubleClick={() => handleEditProduct(product)}
+                        role='row'
+                      >
                       <div className='articulos-ui__results-data articulos-ui__results-cell--description' role='cell'>
                         <strong>{product.inventory.sku || product.id}</strong>
                         <span>{product.general.name || 'Producto sin nombre'}</span>
@@ -1623,8 +1709,14 @@ export const Articulos = () => {
                       <div className='articulos-ui__results-data articulos-ui__results-cell--icon' role='cell'>-</div>
                       <div className='articulos-ui__results-data articulos-ui__results-cell--icon' role='cell'>-</div>
                       <div className='articulos-ui__results-data articulos-ui__results-cell--icon' role='cell'>-</div>
+                      {isProductDeletePending ? (
+                        <span className='articulos-ui__results-row-cancel' aria-hidden='true'>
+                          Cancelar
+                        </span>
+                      ) : null}
                     </div>
-                  ))
+                    )
+                  })
                 )}
               </div>
             </div>

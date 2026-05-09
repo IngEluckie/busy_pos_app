@@ -1,0 +1,12 @@
+- dialog [ref=e1]:
+  - banner [ref=e2]:
+    - heading "Inicio de sesión" [level=2] [ref=e4]
+  - generic [ref=e6]:
+    - generic [ref=e7]:
+      - generic [ref=e8]: Usuario
+      - textbox "Usuario" [active] [ref=e9]
+    - generic [ref=e10]:
+      - generic [ref=e11]: Contraseña
+      - textbox "Contraseña" [ref=e12]
+    - paragraph [ref=e13]: "API: http://localhost:8000"
+    - button "Entrar" [ref=e14] [cursor=pointer]

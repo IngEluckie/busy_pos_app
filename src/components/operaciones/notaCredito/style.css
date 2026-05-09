@@ -1,0 +1,586 @@
+.nota-credito {
+  --credit-bg: #f1f2f4;
+  --credit-border: #d4d9df;
+  --credit-border-strong: #a9b1bb;
+  --credit-text: #2f3540;
+  --credit-muted: #7b838e;
+  --credit-panel: #ffffff;
+  --credit-blue: #0d63a5;
+  --credit-green: #15843f;
+  --credit-red: #d91f2b;
+  --credit-yellow: #e59b18;
+  min-height: calc(100vh - 92px);
+  background: var(--credit-bg);
+  color: var(--credit-text);
+  font-family: 'Segoe UI', Tahoma, sans-serif;
+  font-size: 13px;
+  overflow: auto;
+}
+
+.nota-credito * {
+  box-sizing: border-box;
+}
+
+.nota-credito__toolbar {
+  min-width: 1180px;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(122px, 1fr)) minmax(160px, 4fr) minmax(120px, 0.85fr);
+  align-items: stretch;
+  border-bottom: 1px solid var(--credit-border);
+  background: #ededed;
+}
+
+.nota-credito__toolbar-action {
+  appearance: none;
+  border: 0;
+  border-right: 1px solid #cfcfcf;
+  background: linear-gradient(180deg, #f8f8f8 0%, #e5e5e5 100%);
+  color: #30343a;
+  min-height: 74px;
+  padding: 8px 7px 9px;
+  display: grid;
+  place-items: center;
+  gap: 4px;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.nota-credito__toolbar-action--mas-opciones {
+  grid-column: 8;
+  border-left: 1px solid #cfcfcf;
+  border-right: 0;
+}
+
+.nota-credito__toolbar-action:hover {
+  background: linear-gradient(180deg, #ffffff 0%, #e9e9e9 100%);
+}
+
+.nota-credito__toolbar-icon {
+  color: #5c6470;
+  font-size: 25px;
+  line-height: 1;
+  font-weight: 900;
+  text-align: center;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.nota-credito__toolbar-action--cerrar .nota-credito__toolbar-icon {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--credit-green);
+  color: #ffffff;
+  font-size: 13px;
+}
+
+.nota-credito__toolbar-action--danger .nota-credito__toolbar-icon {
+  color: var(--credit-red);
+  font-size: 31px;
+}
+
+.nota-credito__toolbar-action--primary .nota-credito__toolbar-icon {
+  color: var(--credit-blue);
+}
+
+.nota-credito__toolbar-action--warning .nota-credito__toolbar-icon {
+  color: var(--credit-yellow);
+}
+
+.nota-credito__toolbar-label {
+  color: #33363b;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.15;
+  text-align: center;
+}
+
+.nota-credito__workspace {
+  min-width: 1180px;
+  padding: 10px 12px 12px;
+}
+
+.nota-credito__capture-card,
+.nota-credito__main-panel,
+.nota-credito__side-card,
+.nota-credito__details,
+.nota-credito__total-bar {
+  border: 1px solid var(--credit-border);
+  background: var(--credit-panel);
+  border-radius: 4px;
+  box-shadow: 0 1px 2px rgba(30, 42, 56, 0.04);
+}
+
+.nota-credito__capture-card {
+  min-height: 90px;
+  padding: 12px 14px;
+  display: grid;
+  grid-template-columns: minmax(520px, 1fr) minmax(470px, 0.78fr);
+  gap: 34px;
+  align-items: center;
+}
+
+.nota-credito__capture-left,
+.nota-credito__capture-right {
+  display: grid;
+  gap: 12px;
+}
+
+.nota-credito__capture-right {
+  grid-template-columns: minmax(110px, 0.6fr) minmax(150px, 0.8fr) minmax(130px, 0.7fr);
+  align-items: center;
+  column-gap: 18px;
+}
+
+.nota-credito__field,
+.nota-credito__search-field {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-weight: 800;
+}
+
+.nota-credito__field--currency {
+  grid-column: 1 / span 2;
+  grid-template-columns: 88px minmax(0, 1fr);
+}
+
+.nota-credito__field--folio {
+  grid-column: 3;
+}
+
+.nota-credito__field input,
+.nota-credito__field select,
+.nota-credito__search-control input,
+.nota-credito__comment textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #c8ced6;
+  border-radius: 2px;
+  background: #ffffff;
+  color: #303742;
+  font: inherit;
+  box-shadow: inset 0 1px 2px rgba(20, 32, 44, 0.05);
+}
+
+.nota-credito__field input,
+.nota-credito__field select,
+.nota-credito__search-control input {
+  height: 34px;
+}
+
+.nota-credito__field input,
+.nota-credito__search-control input {
+  padding: 0 10px;
+}
+
+.nota-credito__field select {
+  padding: 0 8px;
+}
+
+.nota-credito__field input[readonly] {
+  background: #f8f9fb;
+}
+
+.nota-credito__label-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.nota-credito__label-icon > span {
+  color: var(--credit-blue);
+  font-weight: 900;
+}
+
+.nota-credito__search-control {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: center;
+}
+
+.nota-credito__search-control button {
+  appearance: none;
+  height: 34px;
+  border: 1px solid #c8ced6;
+  background: linear-gradient(#f5f6f8, #e1e5ea);
+  color: var(--credit-blue);
+  display: grid;
+  place-items: center;
+  font: inherit;
+  font-size: 24px;
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.nota-credito__search-control button:first-child {
+  border-radius: 2px 0 0 2px;
+  border-right: 0;
+}
+
+.nota-credito__search-control button:last-child {
+  border-radius: 0 2px 2px 0;
+  border-left: 0;
+}
+
+.nota-credito__search-control input {
+  border-radius: 0 2px 2px 0;
+}
+
+.nota-credito__search-control:has(button:last-child:nth-child(3)) {
+  grid-template-columns: 36px minmax(0, 1fr) 38px;
+}
+
+.nota-credito__search-control:has(button:last-child:nth-child(3)) input {
+  border-radius: 0;
+}
+
+.nota-credito__checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.nota-credito__checkbox input {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 1px solid #b9c1cb;
+  border-radius: 2px;
+  background: #ffffff;
+}
+
+.nota-credito__document-row {
+  min-height: 48px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.nota-credito__search-field--document {
+  width: min(520px, 42vw);
+  grid-template-columns: 110px minmax(0, 1fr);
+}
+
+.nota-credito__content-grid {
+  display: grid;
+  grid-template-columns: minmax(780px, 1fr) 270px;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.nota-credito__main-panel {
+  min-height: 330px;
+  display: grid;
+  grid-template-rows: minmax(285px, 1fr) auto;
+  overflow: hidden;
+}
+
+.nota-credito__table {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  background: #ffffff;
+  border-bottom: 1px solid var(--credit-border);
+}
+
+.nota-credito__table-head {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.8fr) minmax(100px, 0.7fr) minmax(300px, 3fr) minmax(110px, 0.9fr) minmax(120px, 1fr);
+  background: linear-gradient(#5d6269, #42474d);
+}
+
+.nota-credito__head-cell {
+  min-height: 34px;
+  display: grid;
+  place-items: center;
+  padding: 6px 4px;
+  border-right: 1px solid #989ea6;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.1;
+  text-align: center;
+}
+
+.nota-credito__head-cell:last-child {
+  border-right: 0;
+}
+
+.nota-credito__table-empty {
+  display: flex;
+  min-height: 0;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  padding: 44px 20px;
+  text-align: center;
+  color: var(--credit-muted);
+}
+
+.nota-credito__empty-icon {
+  width: 78px;
+  height: 78px;
+  display: grid;
+  place-items: center;
+  color: #c4c8ce;
+  font-size: 72px;
+  line-height: 1;
+  transform: rotate(45deg);
+}
+
+.nota-credito__table-empty p {
+  margin: 14px 0 6px;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.nota-credito__table-empty span {
+  font-size: 14px;
+}
+
+.nota-credito__item-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  background: #ffffff;
+}
+
+.nota-credito__item-action,
+.nota-credito__quick-actions button {
+  appearance: none;
+  min-height: 34px;
+  border: 1px solid var(--credit-border);
+  border-radius: 4px;
+  background: #ffffff;
+  color: #2d3440;
+  padding: 7px 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.nota-credito__item-action span {
+  color: var(--credit-blue);
+  font-size: 21px;
+  line-height: 1;
+}
+
+.nota-credito__item-action--danger span {
+  color: var(--credit-red);
+}
+
+.nota-credito__sidebar {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.nota-credito__side-card {
+  overflow: hidden;
+}
+
+.nota-credito__side-card h2 {
+  margin: 0;
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--credit-border);
+  background: linear-gradient(#fafafa, #f0f1f3);
+  color: #454d58;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.nota-credito__summary-list,
+.nota-credito__info-list,
+.nota-credito__quick-actions {
+  padding: 12px;
+}
+
+.nota-credito__summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  font-weight: 800;
+}
+
+.nota-credito__summary-row strong {
+  font-size: 15px;
+}
+
+.nota-credito__summary-total {
+  margin-top: 8px;
+  padding-top: 18px;
+  border-top: 1px solid var(--credit-border);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-weight: 900;
+}
+
+.nota-credito__summary-total span {
+  font-size: 16px;
+}
+
+.nota-credito__summary-total strong {
+  color: #0d5da5;
+  font-size: 26px;
+}
+
+.nota-credito__info-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.nota-credito__info-list div {
+  display: grid;
+  grid-template-columns: 1fr 66px;
+  gap: 8px;
+  align-items: start;
+}
+
+.nota-credito__info-list dt {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+}
+
+.nota-credito__info-list dt span {
+  color: #747c87;
+}
+
+.nota-credito__info-list dd {
+  margin: 0;
+  color: #606874;
+}
+
+.nota-credito__quick-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.nota-credito__quick-actions button {
+  padding-inline: 8px;
+}
+
+.nota-credito__item-action:hover,
+.nota-credito__quick-actions button:hover,
+.nota-credito__search-control button:hover {
+  background: #f7f9fb;
+}
+
+.nota-credito__details {
+  margin-top: 8px;
+  padding: 10px 10px 12px;
+  display: grid;
+  grid-template-columns: minmax(560px, 0.9fr) minmax(170px, 0.26fr) minmax(270px, 0.5fr);
+  column-gap: 18px;
+  row-gap: 10px;
+  align-items: start;
+}
+
+.nota-credito__field--seller {
+  grid-column: 1;
+  grid-template-columns: 90px minmax(0, 1fr);
+}
+
+.nota-credito__comment {
+  grid-column: 1;
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  margin: 0;
+  font-weight: 800;
+}
+
+.nota-credito__comment textarea {
+  min-height: 60px;
+  resize: vertical;
+  padding: 9px 10px;
+}
+
+.nota-credito__field--withholdings {
+  grid-column: 3;
+  grid-row: 2;
+  align-self: center;
+  grid-template-columns: 95px minmax(0, 170px);
+}
+
+.nota-credito__field--withholdings input {
+  text-align: right;
+  font-weight: 800;
+}
+
+.nota-credito__total-bar {
+  min-height: 54px;
+  margin-top: 12px;
+  padding: 8px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.nota-credito__total-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: #1b3856;
+  font-weight: 800;
+}
+
+.nota-credito__total-indicator span {
+  color: var(--credit-blue);
+  font-size: 20px;
+}
+
+.nota-credito__total-bar strong {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 24px;
+  color: #142947;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.nota-credito__total-bar strong span {
+  color: #0d5da5;
+  font-size: 30px;
+}
+
+@media (max-width: 1280px) {
+  .nota-credito__toolbar,
+  .nota-credito__workspace {
+    min-width: 1120px;
+  }
+
+  .nota-credito__capture-card {
+    grid-template-columns: minmax(500px, 1fr) minmax(440px, 0.8fr);
+    gap: 22px;
+  }
+
+  .nota-credito__content-grid {
+    grid-template-columns: minmax(740px, 1fr) 260px;
+  }
+}
