@@ -30,11 +30,45 @@ type InventoryTrackingMode = 'tracked' | 'untracked'
 type ReservationPolicy = 'disabled' | 'allowed'
 type StockStatus = 'in_stock' | 'out_of_stock' | 'backorder'
 
-type ProductAttribute = {
+type AttributeCatalogValue = {
+  id: string
+  attributeId: string
+  value: string
+  slug: string
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+}
+
+type AttributeCatalogItem = {
   id: string
   name: string
-  values: string[]
+  slug: string
+  sortOrder: number
+  values: AttributeCatalogValue[]
+  createdAt: string
+  updatedAt: string
+}
+
+type AttributeCatalogResponse = {
+  items: AttributeCatalogItem[]
+  page: number
+  limit: number
+  total: number
+}
+
+type ProductAttributeValue = {
+  id: string
+  value: string
+}
+
+type ProductAttribute = {
+  id: string
+  attributeId: string
+  name: string
+  values: ProductAttributeValue[]
   visible: boolean
+  usedForVariations: boolean
 }
 
 type ProductImage = {
@@ -89,7 +123,12 @@ type ProductWritePayload = {
   type: ProductType
   general: SimpleProduct['general']
   inventory: SimpleProduct['inventory']
-  attributes: []
+  attributes: Array<{
+    attributeId: string
+    valueIds: string[]
+    visible: boolean
+    usedForVariations: boolean
+  }>
   media?: {
     images: ProductImage[]
   }
@@ -174,9 +213,11 @@ const createClientId = (prefix: string) => `${prefix}_${Date.now()}_${Math.rando
 
 const createEmptyProductAttribute = (): ProductAttribute => ({
   id: createClientId('attr'),
+  attributeId: '',
   name: '',
   values: [],
   visible: true,
+  usedForVariations: false,
 })
 
 const isLocalProductImage = (image: ProductImage) => Boolean(image.localFile)
@@ -259,6 +300,21 @@ const getApiErrorMessage = async (response: Response) => {
     detail = null
   }
 
+  if (typeof detail === 'string') {
+    const detailMessageMap: Record<string, string> = {
+      'Attribute not found': 'El atributo ya no existe o no está disponible.',
+      'Attribute value not found': 'El valor del atributo ya no existe o no está disponible.',
+      'Product attributes must be unique': 'No puedes repetir el mismo atributo en el producto.',
+      'Product attribute values must be unique': 'No puedes repetir valores dentro de un atributo.',
+      'Attribute already exists': 'Ese atributo ya existe.',
+      'Attribute value already exists': 'Ese valor ya existe para el atributo.',
+      'Attribute is used by products': 'No se puede eliminar porque está en uso.',
+      'Attribute value is used by products': 'No se puede eliminar porque está en uso.',
+    }
+
+    return detailMessageMap[detail] ?? detail
+  }
+
   if (response.status === 401 || response.status === 403) {
     return 'Tu sesión no tiene permiso para realizar esta acción.'
   }
@@ -273,10 +329,6 @@ const getApiErrorMessage = async (response: Response) => {
 
   if (response.status === 422) {
     return 'La API rechazó los datos del artículo. Revisa los campos capturados.'
-  }
-
-  if (typeof detail === 'string') {
-    return detail
   }
 
   return 'No fue posible completar la operación.'
@@ -358,6 +410,13 @@ export const Articulos = () => {
   const [simpleProductErrors, setSimpleProductErrors] = useState<SimpleProductValidationErrors>({})
   const [productModalError, setProductModalError] = useState<string | null>(null)
   const [apiError, setApiError] = useState<string | null>(null)
+  const [attributeCatalog, setAttributeCatalog] = useState<AttributeCatalogItem[]>([])
+  const [attributeCatalogError, setAttributeCatalogError] = useState<string | null>(null)
+  const [isLoadingAttributes, setIsLoadingAttributes] = useState(false)
+  const [isSavingAttributeCatalog, setIsSavingAttributeCatalog] = useState(false)
+  const [newAttributeName, setNewAttributeName] = useState('')
+  const [newAttributeValues, setNewAttributeValues] = useState('')
+  const [newAttributeValueDrafts, setNewAttributeValueDrafts] = useState<Record<string, string>>({})
   const [isLoadingProducts, setIsLoadingProducts] = useState(false)
   const [isSavingProduct, setIsSavingProduct] = useState(false)
   const [isDeletingProduct, setIsDeletingProduct] = useState(false)
@@ -373,7 +432,6 @@ export const Articulos = () => {
   const deleteDelayTimeoutRef = useRef<number | null>(null)
 
   const trackInventory = simpleProductDraft.inventory.trackingMode === 'tracked'
-  const primaryAttribute = simpleProductDraft.attributes[0]
   const isProductModalOpen = openActionId === 'agregar' || openActionId === 'editar'
   const productImages = useMemo(() => (
     [...simpleProductDraft.media.images].sort((firstImage, secondImage) => firstImage.order - secondImage.order)
@@ -396,6 +454,9 @@ export const Articulos = () => {
   const apiRequestOptions = accessToken && tokenType
     ? { accessToken, apiBaseUrl, tokenType }
     : null
+  const selectedProductAttributeIds = simpleProductDraft.attributes
+    .map((attribute) => attribute.attributeId)
+    .filter(Boolean)
 
   const fetchProducts = useCallback(async (page: number, query: string) => {
     if (isBootstrapping) {
@@ -453,9 +514,44 @@ export const Articulos = () => {
     }
   }, [accessToken, apiBaseUrl, isBootstrapping, tokenType])
 
+  const fetchAttributeCatalog = useCallback(async () => {
+    if (!accessToken || !tokenType) {
+      setAttributeCatalog([])
+      setAttributeCatalogError('Inicia sesión para consultar atributos.')
+
+      return
+    }
+
+    setIsLoadingAttributes(true)
+    setAttributeCatalogError(null)
+
+    try {
+      const params = new URLSearchParams({
+        page: '1',
+        limit: '100',
+      })
+      const response = await requestArticulosApi<AttributeCatalogResponse>(
+        { accessToken, apiBaseUrl, tokenType },
+        `/atributos?${params.toString()}`,
+      )
+
+      setAttributeCatalog(response.items)
+    } catch (error) {
+      setAttributeCatalogError(error instanceof Error ? error.message : 'No fue posible cargar atributos.')
+    } finally {
+      setIsLoadingAttributes(false)
+    }
+  }, [accessToken, apiBaseUrl, tokenType])
+
   useEffect(() => {
     fetchProducts(currentProductPage, activeSearchQuery)
   }, [activeSearchQuery, currentProductPage, fetchProducts])
+
+  useEffect(() => {
+    if (isProductModalOpen) {
+      fetchAttributeCatalog()
+    }
+  }, [fetchAttributeCatalog, isProductModalOpen])
 
   useEffect(() => (
     () => {
@@ -974,11 +1070,11 @@ export const Articulos = () => {
     }))
   }
 
-  const updatePrimaryAttribute = (attribute: Partial<ProductAttribute>) => {
+  const updateProductAttribute = (attributeId: string, attribute: Partial<ProductAttribute>) => {
     setSimpleProductDraft((currentProduct) => ({
       ...currentProduct,
-      attributes: currentProduct.attributes.map((currentAttribute, index) => (
-        index === 0
+      attributes: currentProduct.attributes.map((currentAttribute) => (
+        currentAttribute.id === attributeId
           ? {
               ...currentAttribute,
               ...attribute,
@@ -990,6 +1086,243 @@ export const Articulos = () => {
         updatedAt: new Date().toISOString(),
       },
     }))
+  }
+
+  const handleAddProductAttribute = () => {
+    setSimpleProductDraft((currentProduct) => ({
+      ...currentProduct,
+      attributes: [...currentProduct.attributes, createEmptyProductAttribute()],
+      metadata: {
+        ...currentProduct.metadata,
+        updatedAt: new Date().toISOString(),
+      },
+    }))
+  }
+
+  const handleRemoveProductAttribute = (attributeId: string) => {
+    setSimpleProductDraft((currentProduct) => {
+      const nextAttributes = currentProduct.attributes.filter((attribute) => attribute.id !== attributeId)
+
+      return {
+        ...currentProduct,
+        attributes: nextAttributes.length > 0 ? nextAttributes : [createEmptyProductAttribute()],
+        metadata: {
+          ...currentProduct.metadata,
+          updatedAt: new Date().toISOString(),
+        },
+      }
+    })
+  }
+
+  const handleSelectProductAttribute = (productAttributeId: string, catalogAttributeId: string) => {
+    const catalogAttribute = attributeCatalog.find((attribute) => attribute.id === catalogAttributeId)
+
+    updateProductAttribute(productAttributeId, {
+      attributeId: catalogAttribute?.id ?? '',
+      name: catalogAttribute?.name ?? '',
+      values: catalogAttribute?.values.map((value) => ({
+        id: value.id,
+        value: value.value,
+      })) ?? [],
+    })
+  }
+
+  const updateProductAttributeValues = (
+    productAttributeId: string,
+    getNextValues: (currentValues: ProductAttributeValue[]) => ProductAttributeValue[],
+  ) => {
+    setSimpleProductDraft((currentProduct) => ({
+      ...currentProduct,
+      attributes: currentProduct.attributes.map((currentAttribute) => (
+        currentAttribute.id === productAttributeId
+          ? {
+              ...currentAttribute,
+              values: getNextValues(currentAttribute.values),
+            }
+          : currentAttribute
+      )),
+      metadata: {
+        ...currentProduct.metadata,
+        updatedAt: new Date().toISOString(),
+      },
+    }))
+  }
+
+  const handleAddProductAttributeValue = (productAttributeId: string, valueId: string) => {
+    if (!valueId) {
+      return
+    }
+
+    const productAttribute = simpleProductDraft.attributes.find((attribute) => attribute.id === productAttributeId)
+    const catalogAttribute = attributeCatalog.find((attribute) => attribute.id === productAttribute?.attributeId)
+    const catalogValue = catalogAttribute?.values.find((value) => value.id === valueId)
+
+    if (!catalogValue) {
+      return
+    }
+
+    updateProductAttributeValues(productAttributeId, (currentValues) => (
+      currentValues.some((value) => value.id === catalogValue.id)
+        ? currentValues
+        : [
+            ...currentValues,
+            {
+              id: catalogValue.id,
+              value: catalogValue.value,
+            },
+          ]
+    ))
+  }
+
+  const handleRemoveProductAttributeValue = (productAttributeId: string, valueId: string) => {
+    updateProductAttributeValues(productAttributeId, (currentValues) => (
+      currentValues.filter((value) => value.id !== valueId)
+    ))
+  }
+
+  const createAttributeCatalogItem = async () => {
+    const trimmedName = newAttributeName.trim()
+    const valuesToCreate = newAttributeValues
+      .split('|')
+      .map((value) => value.trim())
+      .filter(Boolean)
+
+    if (!trimmedName) {
+      setAttributeCatalogError('Ingresa el nombre del atributo.')
+
+      return
+    }
+
+    if (!apiRequestOptions) {
+      setAttributeCatalogError('Inicia sesión para crear atributos.')
+
+      return
+    }
+
+    setIsSavingAttributeCatalog(true)
+    setAttributeCatalogError(null)
+
+    try {
+      const createdAttribute = await requestArticulosApi<AttributeCatalogItem>(
+        apiRequestOptions,
+        '/atributos',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            name: trimmedName,
+            sortOrder: attributeCatalog.length,
+          }),
+        },
+      )
+      const createdValues: AttributeCatalogValue[] = []
+
+      for (const value of valuesToCreate) {
+        const createdValue = await requestArticulosApi<AttributeCatalogValue>(
+          apiRequestOptions,
+          `/atributos/${createdAttribute.id}/valores`,
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              value,
+              sortOrder: createdValues.length,
+            }),
+          },
+        )
+
+        createdValues.push(createdValue)
+      }
+
+      const nextAttribute = {
+        ...createdAttribute,
+        values: createdValues,
+      }
+
+      setAttributeCatalog((currentCatalog) => [...currentCatalog, nextAttribute])
+      setSimpleProductDraft((currentProduct) => ({
+        ...currentProduct,
+        attributes: currentProduct.attributes.map((attribute, index) => (
+          index === currentProduct.attributes.length - 1 && !attribute.attributeId
+            ? {
+                ...attribute,
+                attributeId: nextAttribute.id,
+                name: nextAttribute.name,
+                values: createdValues.map((value) => ({ id: value.id, value: value.value })),
+              }
+            : attribute
+        )),
+      }))
+      setNewAttributeName('')
+      setNewAttributeValues('')
+    } catch (error) {
+      setAttributeCatalogError(error instanceof Error ? error.message : 'No fue posible crear el atributo.')
+    } finally {
+      setIsSavingAttributeCatalog(false)
+    }
+  }
+
+  const createAttributeCatalogValue = async (productAttribute: ProductAttribute) => {
+    const trimmedValue = (newAttributeValueDrafts[productAttribute.id] ?? '').trim()
+
+    if (!trimmedValue) {
+      setAttributeCatalogError('Ingresa el valor del atributo.')
+
+      return
+    }
+
+    if (!apiRequestOptions || !productAttribute.attributeId) {
+      setAttributeCatalogError('Selecciona un atributo antes de crear valores.')
+
+      return
+    }
+
+    const catalogAttribute = attributeCatalog.find((attribute) => attribute.id === productAttribute.attributeId)
+
+    setIsSavingAttributeCatalog(true)
+    setAttributeCatalogError(null)
+
+    try {
+      const createdValue = await requestArticulosApi<AttributeCatalogValue>(
+        apiRequestOptions,
+        `/atributos/${productAttribute.attributeId}/valores`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            value: trimmedValue,
+            sortOrder: catalogAttribute?.values.length ?? 0,
+          }),
+        },
+      )
+
+      setAttributeCatalog((currentCatalog) => (
+        currentCatalog.map((attribute) => (
+          attribute.id === productAttribute.attributeId
+            ? {
+                ...attribute,
+                values: [...attribute.values, createdValue],
+              }
+            : attribute
+        ))
+      ))
+      updateProductAttributeValues(productAttribute.id, (currentValues) => (
+        currentValues.some((value) => value.id === createdValue.id)
+          ? currentValues
+          : [
+              ...currentValues,
+              {
+                id: createdValue.id,
+                value: createdValue.value,
+              },
+            ]
+      ))
+      setNewAttributeValueDrafts((currentDrafts) => ({
+        ...currentDrafts,
+        [productAttribute.id]: '',
+      }))
+    } catch (error) {
+      setAttributeCatalogError(error instanceof Error ? error.message : 'No fue posible crear el valor.')
+    } finally {
+      setIsSavingAttributeCatalog(false)
+    }
   }
 
   const updateSimpleProductImages = (images: ProductImage[]) => {
@@ -1255,9 +1588,9 @@ export const Articulos = () => {
         .map((attribute) => ({
           ...attribute,
           name: attribute.name.trim(),
-          values: attribute.values.map((value) => value.trim()).filter(Boolean),
+          values: attribute.values.filter((value) => value.id),
         }))
-        .filter((attribute) => attribute.name || attribute.values.length > 0),
+        .filter((attribute) => attribute.attributeId && attribute.values.length > 0),
       metadata: {
         ...simpleProductDraft.metadata,
         updatedAt: now,
@@ -1274,7 +1607,12 @@ export const Articulos = () => {
       reservationPolicy: product.inventory.trackingMode === 'tracked' ? product.inventory.reservationPolicy : null,
       lowStockThreshold: product.inventory.trackingMode === 'tracked' ? product.inventory.lowStockThreshold : null,
     },
-    attributes: [],
+    attributes: product.attributes.map((attribute) => ({
+      attributeId: attribute.attributeId,
+      valueIds: attribute.values.map((value) => value.id),
+      visible: attribute.visible,
+      usedForVariations: attribute.usedForVariations,
+    })),
     ...(includeMedia
       ? {
           media: {
@@ -1320,6 +1658,35 @@ export const Articulos = () => {
     return validationErrors
   }
 
+  const validateSimpleProductAttributes = (product: SimpleProduct) => {
+    const attributeIds = new Set<string>()
+
+    for (const attribute of product.attributes) {
+      if (attributeIds.has(attribute.attributeId)) {
+        return 'No puedes repetir el mismo atributo en el producto.'
+      }
+
+      attributeIds.add(attribute.attributeId)
+
+      const valueIds = new Set<string>()
+      const catalogAttribute = attributeCatalog.find((catalogItem) => catalogItem.id === attribute.attributeId)
+
+      for (const value of attribute.values) {
+        if (valueIds.has(value.id)) {
+          return 'No puedes repetir valores dentro de un atributo.'
+        }
+
+        if (catalogAttribute && !catalogAttribute.values.some((catalogValue) => catalogValue.id === value.id)) {
+          return 'Los valores seleccionados deben pertenecer al atributo elegido.'
+        }
+
+        valueIds.add(value.id)
+      }
+    }
+
+    return null
+  }
+
   const handleProductModalPrimaryAction = async () => {
     const productToSave = buildSimpleProductToSave()
 
@@ -1357,10 +1724,18 @@ export const Articulos = () => {
       ...validateSimpleProductGeneral(productToSave),
       ...validateSimpleProductInventory(productToSave),
     }
+    const attributeValidationError = validateSimpleProductAttributes(productToSave)
 
     if (Object.keys(validationErrors).length > 0) {
       setSimpleProductErrors(validationErrors)
       setActiveProductTab(validationErrors.name || validationErrors.shortDescription || validationErrors.regularPrice ? 'general' : 'inventario')
+
+      return
+    }
+
+    if (attributeValidationError) {
+      setProductModalError(attributeValidationError)
+      setActiveProductTab('atributos')
 
       return
     }
@@ -2119,80 +2494,202 @@ export const Articulos = () => {
                         <div className='articulos-ui__attributes-form'>
                           <header className='articulos-ui__attributes-toolbar'>
                             <div className='articulos-ui__attributes-actions'>
-                              <button className='articulos-ui__attributes-button articulos-ui__attributes-button--primary' type='button'>
-                                Añadir nuevo
+                              <button
+                                className='articulos-ui__attributes-button articulos-ui__attributes-button--primary'
+                                onClick={handleAddProductAttribute}
+                                type='button'
+                              >
+                                Añadir bloque
                               </button>
-                              <button className='articulos-ui__attributes-select' type='button'>
-                                <span>Añadir existente</span>
-                                <span aria-hidden='true'>⌄</span>
+                              <button
+                                className='articulos-ui__attributes-button'
+                                disabled={isLoadingAttributes}
+                                onClick={fetchAttributeCatalog}
+                                type='button'
+                              >
+                                {isLoadingAttributes ? 'Cargando...' : 'Recargar catálogo'}
                               </button>
                             </div>
-                            <button className='articulos-ui__attributes-link' type='button'>
-                              Ampliar / Cerrar
-                            </button>
+                            <span className='articulos-ui__attributes-status'>
+                              {attributeCatalog.length} atributos disponibles
+                            </span>
                           </header>
 
-                          <section className='articulos-ui__attribute-card'>
-                            <header className='articulos-ui__attribute-card-head'>
-                              <h3>Atributo nuevo</h3>
-                              <div className='articulos-ui__attribute-card-actions'>
-                                <button className='articulos-ui__attribute-delete' type='button'>
-                                  Eliminar
-                                </button>
-                                <button className='articulos-ui__attribute-icon-button' type='button' aria-label='Reordenar atributo'>
-                                  ≡
-                                </button>
-                                <button className='articulos-ui__attribute-icon-button' type='button' aria-label='Contraer atributo'>
-                                  ▴
-                                </button>
-                              </div>
-                            </header>
+                          <div className='articulos-ui__attributes-scroll'>
+                            {attributeCatalogError && (
+                              <p className='articulos-ui__attributes-error'>{attributeCatalogError}</p>
+                            )}
 
-                            <div className='articulos-ui__attribute-fields'>
-                              <div className='articulos-ui__attribute-left'>
+                            <section className='articulos-ui__attribute-create'>
+                              <h3>Nuevo atributo del catálogo</h3>
+                              <div className='articulos-ui__attribute-create-grid'>
                                 <label className='articulos-ui__attribute-field'>
                                   <span>Nombre:</span>
                                   <input
                                     className='articulos-ui__attribute-input'
-                                    onChange={(event) => updatePrimaryAttribute({ name: event.target.value })}
+                                    onChange={(event) => setNewAttributeName(event.target.value)}
+                                    placeholder='Color, Talla, Material'
                                     type='text'
-                                    placeholder='por ejemplo, la longitud o el peso'
-                                    value={primaryAttribute.name}
+                                    value={newAttributeName}
                                   />
                                 </label>
-
-                                <label className='articulos-ui__attribute-visible'>
+                                <label className='articulos-ui__attribute-field'>
+                                  <span>Valores iniciales:</span>
                                   <input
-                                    checked={primaryAttribute.visible}
-                                    onChange={(event) => updatePrimaryAttribute({ visible: event.target.checked })}
-                                    type='checkbox'
+                                    className='articulos-ui__attribute-input'
+                                    onChange={(event) => setNewAttributeValues(event.target.value)}
+                                    placeholder='Rojo | Azul | Verde'
+                                    type='text'
+                                    value={newAttributeValues}
                                   />
-                                  <span>Visible en la página de productos</span>
                                 </label>
+                                <button
+                                  className='articulos-ui__attribute-save'
+                                  disabled={isSavingAttributeCatalog}
+                                  onClick={createAttributeCatalogItem}
+                                  type='button'
+                                >
+                                  Crear atributo
+                                </button>
                               </div>
+                            </section>
 
-                              <label className='articulos-ui__attribute-field articulos-ui__attribute-field--values'>
-                                <span>Valor(es):</span>
-                                <textarea
-                                  className='articulos-ui__attribute-textarea'
-                                  onChange={(event) => updatePrimaryAttribute({
-                                    values: event.target.value.split('|').map((value) => value.trim()),
-                                  })}
-                                  placeholder='Introduce un texto descriptivo. Utiliza «|» para separar los distintos valores.'
-                                  value={primaryAttribute.values.join(' | ')}
-                                />
-                              </label>
-                            </div>
+                            {simpleProductDraft.attributes.map((productAttribute, index) => {
+                              const catalogAttribute = attributeCatalog.find((attribute) => attribute.id === productAttribute.attributeId)
+                              const selectedValueIds = productAttribute.values.map((value) => value.id)
+                              const availableValues = catalogAttribute?.values.filter((value) => !selectedValueIds.includes(value.id)) ?? []
 
-                            <footer className='articulos-ui__attribute-footer'>
-                              <button className='articulos-ui__attribute-save' type='button' disabled>
-                                Guardar atributos
-                              </button>
-                              <button className='articulos-ui__attributes-link' type='button'>
-                                Ampliar / Cerrar
-                              </button>
-                            </footer>
-                          </section>
+                              return (
+                                <section className='articulos-ui__attribute-card' key={productAttribute.id}>
+                                  <header className='articulos-ui__attribute-card-head'>
+                                    <h3>{catalogAttribute?.name ?? `Atributo ${index + 1}`}</h3>
+                                    <div className='articulos-ui__attribute-card-actions'>
+                                      <button
+                                        className='articulos-ui__attribute-delete'
+                                        onClick={() => handleRemoveProductAttribute(productAttribute.id)}
+                                        type='button'
+                                      >
+                                        Eliminar
+                                      </button>
+                                    </div>
+                                  </header>
+
+                                  <div className='articulos-ui__attribute-fields'>
+                                    <div className='articulos-ui__attribute-left'>
+                                      <label className='articulos-ui__attribute-field'>
+                                        <span>Atributo:</span>
+                                        <select
+                                          className='articulos-ui__attribute-input'
+                                          onChange={(event) => handleSelectProductAttribute(productAttribute.id, event.target.value)}
+                                          value={productAttribute.attributeId}
+                                        >
+                                          <option value=''>Selecciona un atributo</option>
+                                          {attributeCatalog.map((attribute) => (
+                                            <option
+                                              disabled={selectedProductAttributeIds.includes(attribute.id) && attribute.id !== productAttribute.attributeId}
+                                              key={attribute.id}
+                                              value={attribute.id}
+                                            >
+                                              {attribute.name}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </label>
+
+                                      <label className='articulos-ui__attribute-visible'>
+                                        <input
+                                          checked={productAttribute.visible}
+                                          onChange={(event) => updateProductAttribute(productAttribute.id, { visible: event.target.checked })}
+                                          type='checkbox'
+                                        />
+                                        <span>Visible en la página de productos</span>
+                                      </label>
+
+                                      <label className='articulos-ui__attribute-visible'>
+                                        <input
+                                          checked={productAttribute.usedForVariations}
+                                          onChange={(event) => updateProductAttribute(productAttribute.id, { usedForVariations: event.target.checked })}
+                                          type='checkbox'
+                                        />
+                                        <span>Usado para variaciones</span>
+                                      </label>
+                                    </div>
+
+                                    <div className='articulos-ui__attribute-field articulos-ui__attribute-field--values'>
+                                      <span>Valores:</span>
+                                      <small className='articulos-ui__attribute-help'>
+                                        Los valores marcados son los disponibles para este producto.
+                                      </small>
+                                      <div
+                                        className='articulos-ui__attribute-values-list'
+                                        aria-label='Valores seleccionados para este producto'
+                                      >
+                                        {productAttribute.values.length > 0 ? (
+                                          productAttribute.values.map((value) => (
+                                            <span className='articulos-ui__attribute-value-chip' key={value.id}>
+                                              <button
+                                                aria-label={`Quitar valor ${value.value}`}
+                                                className='articulos-ui__attribute-value-remove'
+                                                onClick={() => handleRemoveProductAttributeValue(productAttribute.id, value.id)}
+                                                type='button'
+                                              >
+                                                ×
+                                              </button>
+                                              <span>{value.value}</span>
+                                            </span>
+                                          ))
+                                        ) : (
+                                          <span className='articulos-ui__attribute-values-empty'>Sin valores seleccionados</span>
+                                        )}
+                                      </div>
+
+                                      <select
+                                        className='articulos-ui__attribute-input'
+                                        disabled={!catalogAttribute || availableValues.length === 0}
+                                        onChange={(event) => handleAddProductAttributeValue(productAttribute.id, event.target.value)}
+                                        value=''
+                                      >
+                                        <option value=''>
+                                          {!catalogAttribute
+                                            ? 'Selecciona un atributo para agregar valores'
+                                            : availableValues.length === 0
+                                              ? 'Todos los valores están agregados'
+                                              : 'Agregar valor existente'}
+                                        </option>
+                                        {availableValues.map((value) => (
+                                          <option key={value.id} value={value.id}>
+                                            {value.value}
+                                          </option>
+                                        ))}
+                                      </select>
+
+                                      <div className='articulos-ui__attribute-new-value'>
+                                        <input
+                                          className='articulos-ui__attribute-input'
+                                          disabled={!catalogAttribute || isSavingAttributeCatalog}
+                                          onChange={(event) => setNewAttributeValueDrafts((currentDrafts) => ({
+                                            ...currentDrafts,
+                                            [productAttribute.id]: event.target.value,
+                                          }))}
+                                          placeholder='Nuevo valor'
+                                          type='text'
+                                          value={newAttributeValueDrafts[productAttribute.id] ?? ''}
+                                        />
+                                        <button
+                                          className='articulos-ui__attributes-button'
+                                          disabled={!catalogAttribute || isSavingAttributeCatalog}
+                                          onClick={() => createAttributeCatalogValue(productAttribute)}
+                                          type='button'
+                                        >
+                                          Agregar valor
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </section>
+                              )
+                            })}
+                          </div>
                         </div>
                       )}
                   </div>

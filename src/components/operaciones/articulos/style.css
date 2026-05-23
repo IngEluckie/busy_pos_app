@@ -1128,6 +1128,12 @@
   background: #eef7ff;
 }
 
+.articulos-ui__attributes-button:disabled,
+.articulos-ui__attribute-save:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
 .articulos-ui__attributes-select {
   min-width: 310px;
   border-color: #8f969d;
@@ -1154,10 +1160,65 @@
   text-decoration: underline;
 }
 
+.articulos-ui__attributes-status {
+  color: #667085;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 48px;
+  white-space: nowrap;
+}
+
+.articulos-ui__attributes-scroll {
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  align-content: start;
+  gap: 18px;
+  padding: 20px;
+}
+
+.articulos-ui__attributes-error {
+  margin: 0;
+  border: 1px solid #f0b8b8;
+  border-radius: 6px;
+  background: #fff7f6;
+  color: #b42318;
+  font-size: 15px;
+  font-weight: 700;
+  padding: 12px 14px;
+}
+
+.articulos-ui__attribute-create {
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  background: #f8fafc;
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.articulos-ui__attribute-create h3 {
+  margin: 0;
+  color: #344054;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.articulos-ui__attribute-create-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(260px, 1.25fr) auto;
+  gap: 14px;
+  align-items: end;
+}
+
 .articulos-ui__attribute-card {
+  border: 1px solid #e1e1e1;
+  border-radius: 8px;
+  background: #ffffff;
   display: grid;
   grid-template-rows: auto 1fr auto;
   min-height: 0;
+  overflow: hidden;
 }
 
 .articulos-ui__attribute-card-head {
@@ -1232,6 +1293,13 @@
   font-weight: 500;
 }
 
+.articulos-ui__attribute-help {
+  color: #667085;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
 .articulos-ui__attribute-input,
 .articulos-ui__attribute-textarea {
   width: 100%;
@@ -1244,6 +1312,12 @@
   box-sizing: border-box;
 }
 
+.articulos-ui__attribute-input:disabled,
+.articulos-ui__attribute-textarea:disabled {
+  background: #f2f4f7;
+  color: #98a2b3;
+}
+
 .articulos-ui__attribute-input {
   height: 58px;
   padding: 0 10px;
@@ -1254,6 +1328,82 @@
   height: 100%;
   padding: 12px;
   resize: vertical;
+}
+
+.articulos-ui__attribute-new-value {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.articulos-ui__attribute-values-list {
+  min-height: 118px;
+  width: 100%;
+  border: 2px solid #9da1a6;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #404040;
+  box-sizing: border-box;
+  padding: 10px;
+  display: flex;
+  align-content: flex-start;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.articulos-ui__attribute-value-chip {
+  min-height: 38px;
+  max-width: 100%;
+  border: 1px solid #aab0b7;
+  border-radius: 6px;
+  background: #eeeeee;
+  color: #555555;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 10px 0 6px;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.articulos-ui__attribute-value-chip span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.articulos-ui__attribute-value-remove {
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #7a8088;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  font-family: inherit;
+  font-size: 23px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 0;
+}
+
+.articulos-ui__attribute-value-remove:hover,
+.articulos-ui__attribute-value-remove:focus {
+  background: #d9dde2;
+  color: #344054;
+  outline: none;
+}
+
+.articulos-ui__attribute-values-empty {
+  color: #667085;
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 38px;
 }
 
 .articulos-ui__attribute-input::placeholder,
@@ -1296,13 +1446,18 @@
   appearance: none;
   min-width: 210px;
   height: 48px;
-  border: 1px solid #d0d4d8;
+  border: 1px solid #1f6fb8;
   border-radius: 4px;
-  background: #f5f5f5;
-  color: #a0a5aa;
+  background: #ffffff;
+  color: #1f6fb8;
   font-family: inherit;
   font-size: 20px;
   font-weight: 700;
+  cursor: pointer;
+}
+
+.articulos-ui__attribute-save:hover {
+  background: #eef7ff;
 }
 
 .articulos-ui__product-image-panel {
@@ -1814,6 +1969,11 @@
   .articulos-ui__attribute-fields {
     grid-template-columns: 1fr;
     padding: 20px;
+  }
+
+  .articulos-ui__attribute-create-grid,
+  .articulos-ui__attribute-new-value {
+    grid-template-columns: 1fr;
   }
 }
 
