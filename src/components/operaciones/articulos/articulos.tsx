@@ -22,13 +22,14 @@ type ResultColumn = {
   className?: string
 }
 
-type ProductTab = 'general' | 'inventario' | 'atributos'
-type ProductType = 'simple'
-type ProductTypeOption = 'Producto simple' | 'Producto compuesto' | 'Servicio'
+type ProductTab = 'general' | 'inventario' | 'atributos' | 'variaciones'
+type ProductType = 'simple' | 'variable'
+type ProductTypeOption = 'Producto simple' | 'Producto variable' | 'Producto compuesto' | 'Servicio'
 type ProductModalMode = 'create' | 'edit'
 type InventoryTrackingMode = 'tracked' | 'untracked'
 type ReservationPolicy = 'disabled' | 'allowed'
 type StockStatus = 'in_stock' | 'out_of_stock' | 'backorder'
+type ProductStatus = 'draft' | 'active'
 
 type AttributeCatalogValue = {
   id: string
@@ -74,46 +75,90 @@ type ProductAttribute = {
 type ProductImage = {
   id: string
   url: string
-  altText?: string
+  altText?: string | null
   isPrimary: boolean
   order: number
   localFile?: File
   previewUrl?: string
 }
 
-type SimpleProduct = {
+type ProductGeneral = {
+  name: string
+  shortDescription: string
+  longDescription: string
+  regularPrice: number | null
+  salePrice: number | null
+}
+
+type ProductInventory = {
+  sku: string
+  trackingMode: InventoryTrackingMode
+  quantity: number | null
+  reservationPolicy: ReservationPolicy | null
+  lowStockThreshold: number | null
+  stockStatus: StockStatus
+}
+
+type ProductMetadata = {
+  createdAt: string
+  updatedAt: string
+  isActive: boolean
+  status?: ProductStatus
+}
+
+type ProductVariationAttributeValue = {
+  attributeId: string
+  attributeName: string
+  attributeValueId: string
+  value: string
+}
+
+type ProductVariation = {
+  id: string
+  sku: string | null
+  attributeValues: ProductVariationAttributeValue[]
+  media: {
+    images: ProductImage[]
+  }
+  quantity: number | null
+  stockStatus: StockStatus
+  regularPrice: number | null
+  salePrice: number | null
+  trackingMode?: InventoryTrackingMode
+  reservationPolicy?: ReservationPolicy | null
+  lowStockThreshold?: number | null
+  isEnabled: boolean
+  isActive: boolean
+}
+
+type BaseProduct = {
   id: string
   type: ProductType
-  general: {
-    name: string
-    shortDescription: string
-    longDescription: string
-    regularPrice: number | null
-    salePrice: number | null
-  }
-  inventory: {
-    sku: string
-    trackingMode: InventoryTrackingMode
-    quantity: number | null
-    reservationPolicy: ReservationPolicy | null
-    lowStockThreshold: number | null
-    stockStatus: StockStatus
-  }
+  general: ProductGeneral
   attributes: ProductAttribute[]
   media: {
     images: ProductImage[]
   }
-  metadata: {
-    createdAt: string
-    updatedAt: string
-    isActive: boolean
-  }
+  metadata: ProductMetadata
 }
 
-type SimpleProductValidationErrors = Partial<Record<'name' | 'shortDescription' | 'regularPrice' | 'sku', string>>
+type SimpleProduct = BaseProduct & {
+  type: 'simple'
+  inventory: ProductInventory
+}
+
+type VariableProduct = BaseProduct & {
+  type: 'variable'
+  inventory: null
+  variations: ProductVariation[]
+}
+
+type Product = SimpleProduct | VariableProduct
+
+type SimpleProductValidationErrors = Partial<Record<'name' | 'shortDescription' | 'regularPrice' | 'sku' | 'attributes', string>>
 
 type ProductListResponse = {
-  items: SimpleProduct[]
+  items: Product[]
   page: number
   limit: number
   total: number
@@ -121,8 +166,8 @@ type ProductListResponse = {
 
 type ProductWritePayload = {
   type: ProductType
-  general: SimpleProduct['general']
-  inventory: SimpleProduct['inventory']
+  general: ProductGeneral
+  inventory?: ProductInventory
   attributes: Array<{
     attributeId: string
     valueIds: string[]
@@ -132,6 +177,25 @@ type ProductWritePayload = {
   media?: {
     images: ProductImage[]
   }
+}
+
+type VariationWritePayload = Partial<{
+  sku: string | null
+  regularPrice: number | null
+  salePrice: number | null
+  trackingMode: InventoryTrackingMode
+  quantity: number | null
+  reservationPolicy: ReservationPolicy | null
+  lowStockThreshold: number | null
+  stockStatus: StockStatus
+  isEnabled: boolean
+}>
+
+type VariableDraftReadiness = {
+  isReady: boolean
+  missingCount: number
+  requiredCount: number
+  variationErrors: Record<string, string>
 }
 
 type ApiRequestOptions = {
@@ -201,13 +265,26 @@ const productTabs: Array<{ id: ProductTab; label: string }> = [
   { id: 'general', label: 'General' },
   { id: 'inventario', label: 'Inventario' },
   { id: 'atributos', label: 'Atributos' },
+  { id: 'variaciones', label: 'Variaciones' },
 ]
 
-const productTypeOptions: ProductTypeOption[] = ['Producto simple', 'Producto compuesto', 'Servicio']
+const productTypeOptions: ProductTypeOption[] = ['Producto simple', 'Producto variable', 'Producto compuesto', 'Servicio']
 const PRODUCTS_PER_PAGE = 20
 const SHORT_DESCRIPTION_MAX_LENGTH = 150
 const LONG_DESCRIPTION_MAX_LENGTH = 1000
 const PRODUCT_DELETE_DELAY_MS = 5000
+
+const productTypeOptionToType = (option: ProductTypeOption): ProductType => (
+  option === 'Producto variable' ? 'variable' : 'simple'
+)
+
+const productTypeToOption = (type: ProductType): ProductTypeOption => (
+  type === 'variable' ? 'Producto variable' : 'Producto simple'
+)
+
+const isVariableProduct = (product: Product): product is VariableProduct => product.type === 'variable'
+
+const isSimpleProduct = (product: Product): product is SimpleProduct => product.type === 'simple'
 
 const createClientId = (prefix: string) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
 
@@ -265,9 +342,47 @@ const createEmptySimpleProduct = (): SimpleProduct => {
   }
 }
 
-const createEditableSimpleProductDraft = (product: SimpleProduct): SimpleProduct => ({
+const createEmptyVariableProduct = (): VariableProduct => {
+  const now = new Date().toISOString()
+
+  return {
+    id: createClientId('prod'),
+    type: 'variable',
+    general: {
+      name: '',
+      shortDescription: '',
+      longDescription: '',
+      regularPrice: null,
+      salePrice: null,
+    },
+    inventory: null,
+    attributes: [
+      {
+        ...createEmptyProductAttribute(),
+        usedForVariations: true,
+      },
+    ],
+    variations: [],
+    media: {
+      images: [],
+    },
+    metadata: {
+      createdAt: now,
+      updatedAt: now,
+      isActive: true,
+      status: 'draft',
+    },
+  }
+}
+
+const createEmptyProductByType = (type: ProductType): Product => (
+  type === 'variable' ? createEmptyVariableProduct() : createEmptySimpleProduct()
+)
+
+const createEditableProductDraft = (product: Product): Product => ({
   ...product,
   attributes: product.attributes.length > 0 ? product.attributes : [createEmptyProductAttribute()],
+  ...(isVariableProduct(product) ? { variations: (product.variations ?? []).map(normalizeProductVariation) } : {}),
 })
 
 const parseNumberInput = (value: string) => {
@@ -283,6 +398,68 @@ const parseNumberInput = (value: string) => {
 const formatProductPrice = (price: number | null) => (
   price !== null ? `$${price.toFixed(2)}` : '-'
 )
+
+const formatProductTypeLabel = (product: Product) => (
+  isVariableProduct(product) ? 'Variable' : 'Simple'
+)
+
+const getProductStatusLabel = (product: Product) => {
+  if (isVariableProduct(product)) {
+    return product.metadata.status === 'active' ? 'Activo' : 'Borrador'
+  }
+
+  return product.metadata.isActive ? 'Activo' : 'Inactivo'
+}
+
+const getVariationLabel = (variation: ProductVariation) => (
+  variation.attributeValues.map((attributeValue) => `${attributeValue.attributeName}: ${attributeValue.value}`).join(' / ')
+)
+
+const normalizeProductVariation = (variation: ProductVariation): ProductVariation => ({
+  ...variation,
+  media: {
+    images: variation.media?.images ?? [],
+  },
+})
+
+const getEnabledActiveVariations = (product: VariableProduct) => (
+  product.variations.filter((variation) => variation.isEnabled && variation.isActive)
+)
+
+const getVariableDraftReadiness = (product: VariableProduct): VariableDraftReadiness => {
+  const requiredVariations = getEnabledActiveVariations(product)
+  const variationErrors: Record<string, string> = {}
+
+  requiredVariations.forEach((variation) => {
+    if (!variation.sku?.trim()) {
+      variationErrors[variation.id] = 'Captura un SKU para esta variación habilitada.'
+    }
+  })
+
+  return {
+    isReady: requiredVariations.length > 0 && Object.keys(variationErrors).length === 0,
+    missingCount: Object.keys(variationErrors).length,
+    requiredCount: requiredVariations.length,
+    variationErrors,
+  }
+}
+
+const buildVariationWritePayload = (variation: ProductVariation): VariationWritePayload => ({
+  sku: variation.sku?.trim() || null,
+  quantity: variation.quantity,
+  stockStatus: variation.stockStatus,
+  regularPrice: variation.regularPrice,
+  salePrice: variation.salePrice,
+  isEnabled: variation.isEnabled,
+})
+
+const getSharedVariationData = (variation: ProductVariation) => ({
+  quantity: variation.quantity,
+  stockStatus: variation.stockStatus,
+  regularPrice: variation.regularPrice,
+  salePrice: variation.salePrice,
+  isEnabled: variation.isEnabled,
+})
 
 const stockStatusLabels: Record<StockStatus, string> = {
   in_stock: 'Hay existencias',
@@ -310,6 +487,13 @@ const getApiErrorMessage = async (response: Response) => {
       'Attribute value already exists': 'Ese valor ya existe para el atributo.',
       'Attribute is used by products': 'No se puede eliminar porque está en uso.',
       'Attribute value is used by products': 'No se puede eliminar porque está en uso.',
+      'Variable product must have enabled variations': 'El producto debe tener al menos una variación habilitada.',
+      'Variation SKU is required': 'Todas las variaciones habilitadas deben tener SKU.',
+      'Duplicate variation SKU': 'Hay SKUs duplicados en las variaciones.',
+      'Tracked variation quantity is required': 'Las variaciones con inventario rastreado necesitan cantidad.',
+      'Article is not variable': 'Este endpoint solo aplica para productos variables.',
+      'Variation not found': 'La variación no existe o ya no está activa.',
+      'Image order must include every product image': 'El orden debe incluir todas las imágenes de la variación.',
     }
 
     return detailMessageMap[detail] ?? detail
@@ -325,6 +509,14 @@ const getApiErrorMessage = async (response: Response) => {
 
   if (response.status === 409) {
     return 'El SKU ya existe. Ingresa un SKU diferente.'
+  }
+
+  if (response.status === 413) {
+    return 'El archivo de imagen excede el límite permitido.'
+  }
+
+  if (response.status === 415) {
+    return 'El tipo de imagen no es compatible.'
   }
 
   if (response.status === 422) {
@@ -396,8 +588,8 @@ export const Articulos = () => {
   const [activeProductTab, setActiveProductTab] = useState<ProductTab>('general')
   const [productType, setProductType] = useState<ProductTypeOption>(productTypeOptions[0])
   const [productModalMode, setProductModalMode] = useState<ProductModalMode>('create')
-  const [simpleProductDraft, setSimpleProductDraft] = useState<SimpleProduct>(() => createEmptySimpleProduct())
-  const [simpleProducts, setSimpleProducts] = useState<SimpleProduct[]>([])
+  const [simpleProductDraft, setSimpleProductDraft] = useState<Product>(() => createEmptySimpleProduct())
+  const [simpleProducts, setSimpleProducts] = useState<Product[]>([])
   const [currentProductPage, setCurrentProductPage] = useState(1)
   const [totalProducts, setTotalProducts] = useState(0)
   const [searchQuery, setSearchQuery] = useState('')
@@ -405,6 +597,7 @@ export const Articulos = () => {
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
   const [pendingDeleteProductId, setPendingDeleteProductId] = useState<string | null>(null)
   const [adjustingProductId, setAdjustingProductId] = useState<string | null>(null)
+  const [adjustingVariationId, setAdjustingVariationId] = useState<string | null>(null)
   const [adjustmentQuantityDraft, setAdjustmentQuantityDraft] = useState('')
   const [adjustmentError, setAdjustmentError] = useState<string | null>(null)
   const [simpleProductErrors, setSimpleProductErrors] = useState<SimpleProductValidationErrors>({})
@@ -421,6 +614,10 @@ export const Articulos = () => {
   const [isSavingProduct, setIsSavingProduct] = useState(false)
   const [isDeletingProduct, setIsDeletingProduct] = useState(false)
   const [isAdjustingProduct, setIsAdjustingProduct] = useState(false)
+  const [savingVariationIds, setSavingVariationIds] = useState<string[]>([])
+  const [savingVariationImageIds, setSavingVariationImageIds] = useState<string[]>([])
+  const [variationErrors, setVariationErrors] = useState<Record<string, string>>({})
+  const [useSameVariationData, setUseSameVariationData] = useState(true)
   const [activeProductImageId, setActiveProductImageId] = useState<string | null>(null)
   const [productImageCarouselStart, setProductImageCarouselStart] = useState(0)
   const [isProductImageExpanded, setIsProductImageExpanded] = useState(false)
@@ -429,10 +626,24 @@ export const Articulos = () => {
   const [productImageObjectUrls, setProductImageObjectUrls] = useState<Record<string, string>>({})
   const productImageInputRef = useRef<HTMLInputElement | null>(null)
   const fetchedProductImageObjectUrlsRef = useRef<string[]>([])
+  const requestedProductImageIdsRef = useRef<Set<string>>(new Set())
   const deleteDelayTimeoutRef = useRef<number | null>(null)
 
-  const trackInventory = simpleProductDraft.inventory.trackingMode === 'tracked'
+  const isVariableDraft = isVariableProduct(simpleProductDraft)
+  const simpleDraftInventory = isSimpleProduct(simpleProductDraft) ? simpleProductDraft.inventory : createEmptySimpleProduct().inventory
+  const trackInventory = isSimpleProduct(simpleProductDraft) && simpleDraftInventory.trackingMode === 'tracked'
   const isProductModalOpen = openActionId === 'agregar' || openActionId === 'editar'
+  const visibleProductTabs = productTabs.filter((tab) => {
+    if (isVariableDraft && tab.id === 'inventario') {
+      return false
+    }
+
+    if (!isVariableDraft && tab.id === 'variaciones') {
+      return false
+    }
+
+    return true
+  })
   const productImages = useMemo(() => (
     [...simpleProductDraft.media.images].sort((firstImage, secondImage) => firstImage.order - secondImage.order)
   ), [simpleProductDraft.media.images])
@@ -444,11 +655,24 @@ export const Articulos = () => {
   const canGoToPreviousProductPage = totalProductPages > 0 && currentProductPage > 1
   const canGoToNextProductPage = totalProductPages > 0 && currentProductPage < totalProductPages
   const selectedProduct = simpleProducts.find((product) => product.id === selectedProductId) ?? null
+  const selectedVariableProduct = selectedProduct && isVariableProduct(selectedProduct) ? selectedProduct : null
   const selectedProductImages = useMemo(() => (
     selectedProduct
       ? [...selectedProduct.media.images].sort((firstImage, secondImage) => firstImage.order - secondImage.order)
       : []
   ), [selectedProduct])
+  const draftVariationImageSignature = isVariableDraft
+    ? simpleProductDraft.variations
+        .map((variation) => variation.media.images.map((image) => `${image.id}:${image.url}`).join(','))
+        .join('|')
+    : ''
+  const draftVariationImages = useMemo(() => (
+    isVariableDraft
+      ? simpleProductDraft.variations.flatMap((variation) => variation.media.images)
+      : []
+  // Recompute image loading only when variation image identity changes, not while editing row fields.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ), [draftVariationImageSignature, isVariableDraft])
   const activeSelectedProductImage = selectedProductImages.find((image) => image.id === selectedProductImageId) ?? selectedProductImages[0] ?? null
   const canUseApi = isAuthenticated && Boolean(accessToken && tokenType)
   const apiRequestOptions = accessToken && tokenType
@@ -457,6 +681,7 @@ export const Articulos = () => {
   const selectedProductAttributeIds = simpleProductDraft.attributes
     .map((attribute) => attribute.attributeId)
     .filter(Boolean)
+  const variableDraftReadiness = isVariableDraft ? getVariableDraftReadiness(simpleProductDraft) : null
 
   const fetchProducts = useCallback(async (page: number, query: string) => {
     if (isBootstrapping) {
@@ -574,12 +799,19 @@ export const Articulos = () => {
 
     const requestOptions = { accessToken, apiBaseUrl, tokenType }
 
-    const imagesToLoad = [...productImages, ...selectedProductImages]
+    const imagesToLoad = [...productImages, ...selectedProductImages, ...draftVariationImages]
 
     imagesToLoad.forEach((image) => {
-      if (image.previewUrl || isLocalProductImage(image) || productImageObjectUrls[image.id]) {
+      if (
+        image.previewUrl
+        || isLocalProductImage(image)
+        || productImageObjectUrls[image.id]
+        || requestedProductImageIdsRef.current.has(image.id)
+      ) {
         return
       }
+
+      requestedProductImageIdsRef.current.add(image.id)
 
       requestArticuloImageObjectUrl(requestOptions, image.url)
         .then((objectUrl) => {
@@ -604,7 +836,7 @@ export const Articulos = () => {
           ))
         })
     })
-  }, [accessToken, apiBaseUrl, productImageObjectUrls, productImages, selectedProductImages, tokenType])
+  }, [accessToken, apiBaseUrl, draftVariationImages, productImageObjectUrls, productImages, selectedProductImages, tokenType])
 
   useEffect(() => {
     if (productImages.length === 0) {
@@ -676,14 +908,22 @@ export const Articulos = () => {
 
   const clearAdjustment = () => {
     setAdjustingProductId(null)
+    setAdjustingVariationId(null)
     setAdjustmentQuantityDraft('')
     setAdjustmentError(null)
   }
 
-  const startProductAdjustment = (product: SimpleProduct) => {
+  const startProductAdjustment = (product: Product) => {
     setSelectedProductId(product.id)
     setAdjustingProductId(product.id)
-    setAdjustmentQuantityDraft(String(product.inventory.quantity ?? 0))
+    if (isVariableProduct(product)) {
+      const firstVariation = getEnabledActiveVariations(product)[0] ?? product.variations[0] ?? null
+      setAdjustingVariationId(firstVariation?.id ?? null)
+      setAdjustmentQuantityDraft(String(firstVariation?.quantity ?? 0))
+    } else {
+      setAdjustingVariationId(null)
+      setAdjustmentQuantityDraft(String(product.inventory.quantity ?? 0))
+    }
     setAdjustmentError(null)
   }
 
@@ -695,13 +935,23 @@ export const Articulos = () => {
     return Number(adjustmentQuantityDraft)
   }
 
-  const replaceProductInList = (updatedProduct: SimpleProduct) => {
+  const replaceProductInList = (updatedProduct: Product) => {
     setSimpleProducts((currentProducts) => (
       currentProducts.map((product) => (
         product.id === updatedProduct.id ? updatedProduct : product
       ))
     ))
     setSelectedProductId(updatedProduct.id)
+  }
+
+  const applyUpdatedProductPreservingVariationDraft = (updatedProduct: Product) => {
+    replaceProductInList(updatedProduct)
+
+    setSimpleProductDraft((currentProduct) => (
+      currentProduct.id === updatedProduct.id
+        ? mergeProductWithCurrentVariationDraft(updatedProduct, currentProduct)
+        : currentProduct
+    ))
   }
 
   const confirmProductAdjustment = async () => {
@@ -719,14 +969,25 @@ export const Articulos = () => {
       return
     }
 
+    const productToAdjust = simpleProducts.find((product) => product.id === adjustingProductId)
+    const isVariableAdjustment = productToAdjust && isVariableProduct(productToAdjust)
+
+    if (isVariableAdjustment && !adjustingVariationId) {
+      setAdjustmentError('Selecciona una variación para ajustar.')
+
+      return
+    }
+
     setIsAdjustingProduct(true)
     setAdjustmentError(null)
     setApiError(null)
 
     try {
-      const updatedProduct = await requestArticulosApi<SimpleProduct>(
+      const updatedProduct = await requestArticulosApi<Product>(
         apiRequestOptions,
-        `/${adjustingProductId}/ajustar`,
+        isVariableAdjustment
+          ? `/${adjustingProductId}/variaciones/${adjustingVariationId}/ajustar`
+          : `/${adjustingProductId}/ajustar`,
         {
           method: 'POST',
           body: JSON.stringify({
@@ -744,6 +1005,13 @@ export const Articulos = () => {
     } finally {
       setIsAdjustingProduct(false)
     }
+  }
+
+  const handleSelectAdjustmentVariation = (variationId: string) => {
+    setAdjustingVariationId(variationId)
+    const variation = selectedVariableProduct?.variations.find((item) => item.id === variationId)
+    setAdjustmentQuantityDraft(String(variation?.quantity ?? 0))
+    setAdjustmentError(null)
   }
 
   const reloadCurrentProducts = () => {
@@ -796,7 +1064,7 @@ export const Articulos = () => {
     }
   }
 
-  const startProductDeleteDelay = (product: SimpleProduct, requestOptions: ApiRequestOptions | null) => {
+  const startProductDeleteDelay = (product: Product, requestOptions: ApiRequestOptions | null) => {
     cancelProductDeleteDelay()
     clearAdjustment()
     setSelectedProductId(product.id)
@@ -835,15 +1103,19 @@ export const Articulos = () => {
     }
 
     if (actionId === 'agregar') {
+      const nextType: ProductType = 'simple'
       clearAdjustment()
       setProductModalMode('create')
-      setSimpleProductDraft(createEmptySimpleProduct())
+      setSimpleProductDraft(createEmptyProductByType(nextType))
+      setProductType('Producto simple')
       setActiveProductImageId(null)
       setProductImageCarouselStart(0)
       setIsProductImageExpanded(false)
       setDeletedProductImageIds([])
       setProductImageObjectUrls({})
+      requestedProductImageIdsRef.current.clear()
       setSimpleProductErrors({})
+      setUseSameVariationData(true)
       setActiveProductTab('general')
       setOpenActionId(actionId)
 
@@ -867,13 +1139,16 @@ export const Articulos = () => {
 
       clearAdjustment()
       setProductModalMode('edit')
-      setSimpleProductDraft(createEditableSimpleProductDraft(selectedProduct))
+      setProductType(productTypeToOption(selectedProduct.type))
+      setSimpleProductDraft(createEditableProductDraft(selectedProduct))
       setActiveProductImageId(selectedProduct.media.images.find((image) => image.isPrimary)?.id ?? selectedProduct.media.images[0]?.id ?? null)
       setProductImageCarouselStart(0)
       setIsProductImageExpanded(false)
       setDeletedProductImageIds([])
       setProductImageObjectUrls({})
+      requestedProductImageIdsRef.current.clear()
       setSimpleProductErrors({})
+      setUseSameVariationData(isVariableProduct(selectedProduct))
       setActiveProductTab('general')
       setOpenActionId(actionId)
 
@@ -904,8 +1179,14 @@ export const Articulos = () => {
         return
       }
 
-      if (selectedProduct.inventory.trackingMode !== 'tracked') {
+      if (isSimpleProduct(selectedProduct) && selectedProduct.inventory.trackingMode !== 'tracked') {
         setProductModalError('El producto no maneja cantidad de inventario.')
+
+        return
+      }
+
+      if (isVariableProduct(selectedProduct) && selectedProduct.variations.length === 0) {
+        setProductModalError('El producto variable no tiene variaciones para ajustar.')
 
         return
       }
@@ -929,7 +1210,7 @@ export const Articulos = () => {
       setApiError(null)
 
       try {
-        const clonedProduct = await requestArticulosApi<SimpleProduct>(
+        const clonedProduct = await requestArticulosApi<Product>(
           requestOptions as ApiRequestOptions,
           `/${selectedProduct.id}/clonar`,
           {
@@ -977,7 +1258,7 @@ export const Articulos = () => {
     setSelectedProductId(productId)
   }
 
-  const handleEditProduct = (product: SimpleProduct) => {
+  const handleEditProduct = (product: Product) => {
     if (pendingDeleteProductId || adjustingProductId === product.id) {
       return
     }
@@ -985,13 +1266,16 @@ export const Articulos = () => {
     clearAdjustment()
     setSelectedProductId(product.id)
     setProductModalMode('edit')
-    setSimpleProductDraft(createEditableSimpleProductDraft(product))
+    setProductType(productTypeToOption(product.type))
+    setSimpleProductDraft(createEditableProductDraft(product))
     setActiveProductImageId(product.media.images.find((image) => image.isPrimary)?.id ?? product.media.images[0]?.id ?? null)
     setProductImageCarouselStart(0)
     setIsProductImageExpanded(false)
     setDeletedProductImageIds([])
     setProductImageObjectUrls({})
+    requestedProductImageIdsRef.current.clear()
     setSimpleProductErrors({})
+    setUseSameVariationData(isVariableProduct(product))
     setActiveProductTab('general')
     setOpenActionId('editar')
   }
@@ -1020,7 +1304,34 @@ export const Articulos = () => {
     })
   }
 
-  const updateSimpleProductGeneral = (general: Partial<SimpleProduct['general']>) => {
+  const handleProductTypeChange = (option: ProductTypeOption) => {
+    const nextType = productTypeOptionToType(option)
+
+    setProductType(option)
+    setSimpleProductDraft((currentProduct) => {
+      if (currentProduct.type === nextType) {
+        return currentProduct
+      }
+
+      const nextProduct = createEmptyProductByType(nextType)
+
+      return {
+        ...nextProduct,
+        general: currentProduct.general,
+        attributes: currentProduct.attributes.map((attribute) => ({
+          ...attribute,
+          usedForVariations: nextType === 'variable' ? true : attribute.usedForVariations,
+        })),
+        media: currentProduct.media,
+      }
+    })
+    setActiveProductTab('general')
+    setSimpleProductErrors({})
+    setVariationErrors({})
+    setUseSameVariationData(nextType === 'variable')
+  }
+
+  const updateSimpleProductGeneral = (general: Partial<ProductGeneral>) => {
     const fieldsToClear: Array<keyof SimpleProductValidationErrors> = []
 
     if ('name' in general) {
@@ -1052,22 +1363,32 @@ export const Articulos = () => {
     }))
   }
 
-  const updateSimpleProductInventory = (inventory: Partial<SimpleProduct['inventory']>) => {
+  const updateSimpleProductInventory = (inventory: Partial<ProductInventory>) => {
+    if (!isSimpleProduct(simpleProductDraft)) {
+      return
+    }
+
     if ('sku' in inventory) {
       clearSimpleProductErrors(['sku'])
     }
 
-    setSimpleProductDraft((currentProduct) => ({
-      ...currentProduct,
-      inventory: {
-        ...currentProduct.inventory,
-        ...inventory,
-      },
-      metadata: {
-        ...currentProduct.metadata,
-        updatedAt: new Date().toISOString(),
-      },
-    }))
+    setSimpleProductDraft((currentProduct) => {
+      if (!isSimpleProduct(currentProduct)) {
+        return currentProduct
+      }
+
+      return {
+        ...currentProduct,
+        inventory: {
+          ...currentProduct.inventory,
+          ...inventory,
+        },
+        metadata: {
+          ...currentProduct.metadata,
+          updatedAt: new Date().toISOString(),
+        },
+      }
+    })
   }
 
   const updateProductAttribute = (attributeId: string, attribute: Partial<ProductAttribute>) => {
@@ -1091,7 +1412,13 @@ export const Articulos = () => {
   const handleAddProductAttribute = () => {
     setSimpleProductDraft((currentProduct) => ({
       ...currentProduct,
-      attributes: [...currentProduct.attributes, createEmptyProductAttribute()],
+      attributes: [
+        ...currentProduct.attributes,
+        {
+          ...createEmptyProductAttribute(),
+          usedForVariations: isVariableProduct(currentProduct),
+        },
+      ],
       metadata: {
         ...currentProduct.metadata,
         updatedAt: new Date().toISOString(),
@@ -1511,7 +1838,7 @@ export const Articulos = () => {
     requestOptions: ApiRequestOptions,
   ) => {
     for (const imageId of deletedProductImageIds) {
-      await requestArticulosApi<SimpleProduct>(
+      await requestArticulosApi<Product>(
         requestOptions,
         `/${productId}/imagenes/${imageId}`,
         { method: 'DELETE' },
@@ -1534,7 +1861,7 @@ export const Articulos = () => {
       })
     }
 
-    const orderedProduct = await requestArticulosApi<SimpleProduct>(
+    const orderedProduct = await requestArticulosApi<Product>(
       requestOptions,
       `/${productId}/imagenes`,
       {
@@ -1560,58 +1887,82 @@ export const Articulos = () => {
   }
 
   const handleTrackInventoryChange = (isTracked: boolean) => {
+    if (!isSimpleProduct(simpleProductDraft)) {
+      return
+    }
+
     updateSimpleProductInventory({
       trackingMode: isTracked ? 'tracked' : 'untracked',
-      quantity: isTracked ? simpleProductDraft.inventory.quantity ?? 1 : null,
-      reservationPolicy: isTracked ? simpleProductDraft.inventory.reservationPolicy ?? 'disabled' : null,
-      lowStockThreshold: isTracked ? simpleProductDraft.inventory.lowStockThreshold : null,
-      stockStatus: isTracked ? 'in_stock' : simpleProductDraft.inventory.stockStatus,
+      quantity: isTracked ? simpleDraftInventory.quantity ?? 1 : null,
+      reservationPolicy: isTracked ? simpleDraftInventory.reservationPolicy ?? 'disabled' : null,
+      lowStockThreshold: isTracked ? simpleDraftInventory.lowStockThreshold : null,
+      stockStatus: isTracked ? 'in_stock' : simpleDraftInventory.stockStatus,
     })
   }
 
-  const buildSimpleProductToSave = (): SimpleProduct => {
+  const buildSimpleProductToSave = (): Product => {
     const now = new Date().toISOString()
+    const cleanAttributes = simpleProductDraft.attributes
+      .map((attribute) => ({
+        ...attribute,
+        name: attribute.name.trim(),
+        values: attribute.values.filter((value) => value.id),
+        usedForVariations: isSimpleProduct(simpleProductDraft) ? false : attribute.usedForVariations,
+      }))
+      .filter((attribute) => attribute.attributeId && attribute.values.length > 0)
+
+    const general = {
+      ...simpleProductDraft.general,
+      name: simpleProductDraft.general.name.trim(),
+      shortDescription: simpleProductDraft.general.shortDescription.trim(),
+      longDescription: simpleProductDraft.general.longDescription.trim(),
+    }
+    const metadata = {
+      ...simpleProductDraft.metadata,
+      updatedAt: now,
+    }
+
+    if (isSimpleProduct(simpleProductDraft)) {
+      return {
+        ...simpleProductDraft,
+        general,
+        inventory: {
+          ...simpleProductDraft.inventory,
+          sku: simpleProductDraft.inventory.sku.trim(),
+        },
+        attributes: cleanAttributes,
+        metadata,
+      }
+    }
 
     return {
       ...simpleProductDraft,
-      general: {
-        ...simpleProductDraft.general,
-        name: simpleProductDraft.general.name.trim(),
-        shortDescription: simpleProductDraft.general.shortDescription.trim(),
-        longDescription: simpleProductDraft.general.longDescription.trim(),
-      },
-      inventory: {
-        ...simpleProductDraft.inventory,
-        sku: simpleProductDraft.inventory.sku.trim(),
-      },
-      attributes: simpleProductDraft.attributes
-        .map((attribute) => ({
-          ...attribute,
-          name: attribute.name.trim(),
-          values: attribute.values.filter((value) => value.id),
-        }))
-        .filter((attribute) => attribute.attributeId && attribute.values.length > 0),
-      metadata: {
-        ...simpleProductDraft.metadata,
-        updatedAt: now,
-      },
+      general,
+      inventory: null,
+      variations: simpleProductDraft.variations ?? [],
+      attributes: cleanAttributes,
+      metadata,
     }
   }
 
-  const buildProductWritePayload = (product: SimpleProduct, includeMedia = false): ProductWritePayload => ({
-    type: 'simple',
+  const buildProductWritePayload = (product: Product, includeMedia = false): ProductWritePayload => ({
+    type: product.type,
     general: product.general,
-    inventory: {
-      ...product.inventory,
-      quantity: product.inventory.trackingMode === 'tracked' ? product.inventory.quantity : null,
-      reservationPolicy: product.inventory.trackingMode === 'tracked' ? product.inventory.reservationPolicy : null,
-      lowStockThreshold: product.inventory.trackingMode === 'tracked' ? product.inventory.lowStockThreshold : null,
-    },
+    ...(isSimpleProduct(product)
+      ? {
+          inventory: {
+            ...product.inventory,
+            quantity: product.inventory.trackingMode === 'tracked' ? product.inventory.quantity : null,
+            reservationPolicy: product.inventory.trackingMode === 'tracked' ? product.inventory.reservationPolicy : null,
+            lowStockThreshold: product.inventory.trackingMode === 'tracked' ? product.inventory.lowStockThreshold : null,
+          },
+        }
+      : {}),
     attributes: product.attributes.map((attribute) => ({
       attributeId: attribute.attributeId,
       valueIds: attribute.values.map((value) => value.id),
       visible: attribute.visible,
-      usedForVariations: attribute.usedForVariations,
+      usedForVariations: isSimpleProduct(product) ? false : attribute.usedForVariations,
     })),
     ...(includeMedia
       ? {
@@ -1630,7 +1981,7 @@ export const Articulos = () => {
       : {}),
   })
 
-  const validateSimpleProductGeneral = (product: SimpleProduct) => {
+  const validateSimpleProductGeneral = (product: Product) => {
     const validationErrors: SimpleProductValidationErrors = {}
 
     if (!product.general.name) {
@@ -1648,8 +1999,12 @@ export const Articulos = () => {
     return validationErrors
   }
 
-  const validateSimpleProductInventory = (product: SimpleProduct) => {
+  const validateSimpleProductInventory = (product: Product) => {
     const validationErrors: SimpleProductValidationErrors = {}
+
+    if (isVariableProduct(product)) {
+      return validationErrors
+    }
 
     if (!product.inventory.sku) {
       validationErrors.sku = 'El SKU es obligatorio.'
@@ -1658,7 +2013,7 @@ export const Articulos = () => {
     return validationErrors
   }
 
-  const validateSimpleProductAttributes = (product: SimpleProduct) => {
+  const validateSimpleProductAttributes = (product: Product) => {
     const attributeIds = new Set<string>()
 
     for (const attribute of product.attributes) {
@@ -1687,6 +2042,510 @@ export const Articulos = () => {
     return null
   }
 
+  const validateVariableProductAttributes = (product: Product) => {
+    if (!isVariableProduct(product)) {
+      return null
+    }
+
+    const variationAttributes = product.attributes.filter((attribute) => attribute.usedForVariations && attribute.values.length > 0)
+
+    if (variationAttributes.length === 0) {
+      return 'Selecciona al menos un atributo usado para variaciones con valores.'
+    }
+
+    return null
+  }
+
+  const updateDraftVariation = (variationId: string, variation: Partial<ProductVariation>) => {
+    setSimpleProductDraft((currentProduct) => {
+      if (!isVariableProduct(currentProduct)) {
+        return currentProduct
+      }
+
+      return {
+        ...currentProduct,
+        variations: currentProduct.variations.map((currentVariation) => (
+          currentVariation.id === variationId
+            ? {
+                ...currentVariation,
+                ...variation,
+              }
+            : currentVariation
+        )),
+      }
+    })
+
+    if ('sku' in variation) {
+      setVariationErrors((currentErrors) => {
+        const nextErrors = { ...currentErrors }
+        delete nextErrors[variationId]
+
+        return nextErrors
+      })
+    }
+  }
+
+  const applySharedVariationData = (
+    variationData: Partial<Pick<ProductVariation, 'quantity' | 'stockStatus' | 'regularPrice' | 'salePrice' | 'isEnabled'>>,
+  ) => {
+    setSimpleProductDraft((currentProduct) => {
+      if (!isVariableProduct(currentProduct)) {
+        return currentProduct
+      }
+
+      return {
+        ...currentProduct,
+        variations: currentProduct.variations.map((currentVariation) => (
+          currentVariation.isActive
+            ? {
+                ...currentVariation,
+                ...variationData,
+              }
+            : currentVariation
+        )),
+      }
+    })
+  }
+
+  const updateVariationSharedField = (
+    variationId: string,
+    variationData: Partial<Pick<ProductVariation, 'quantity' | 'stockStatus' | 'regularPrice' | 'salePrice' | 'isEnabled'>>,
+  ) => {
+    if (useSameVariationData) {
+      applySharedVariationData(variationData)
+
+      return
+    }
+
+    updateDraftVariation(variationId, variationData)
+  }
+
+  const handleUseSameVariationDataChange = (isChecked: boolean) => {
+    setUseSameVariationData(isChecked)
+
+    if (!isChecked || !isVariableProduct(simpleProductDraft)) {
+      return
+    }
+
+    const sourceVariation = simpleProductDraft.variations.find((variation) => variation.isActive)
+
+    if (sourceVariation) {
+      applySharedVariationData(getSharedVariationData(sourceVariation))
+    }
+  }
+
+  const mergeVariationWithLocalEdits = (
+    serverVariation: ProductVariation,
+    currentVariation: ProductVariation,
+    savedPayload?: VariationWritePayload,
+  ): ProductVariation => {
+    const normalizedVariation = normalizeProductVariation(serverVariation)
+    const currentPayload = buildVariationWritePayload(currentVariation)
+    const hasLocalEditsAfterSave = savedPayload
+      ? (
+          currentPayload.sku !== savedPayload.sku
+          || currentPayload.quantity !== savedPayload.quantity
+          || currentPayload.stockStatus !== savedPayload.stockStatus
+          || currentPayload.regularPrice !== savedPayload.regularPrice
+          || currentPayload.salePrice !== savedPayload.salePrice
+          || currentPayload.isEnabled !== savedPayload.isEnabled
+        )
+      : (
+          currentPayload.sku !== (normalizedVariation.sku?.trim() || null)
+          || currentPayload.quantity !== normalizedVariation.quantity
+          || currentPayload.stockStatus !== normalizedVariation.stockStatus
+          || currentPayload.regularPrice !== normalizedVariation.regularPrice
+          || currentPayload.salePrice !== normalizedVariation.salePrice
+          || currentPayload.isEnabled !== normalizedVariation.isEnabled
+        )
+
+    return hasLocalEditsAfterSave
+      ? {
+          ...normalizedVariation,
+          sku: currentVariation.sku,
+          quantity: currentVariation.quantity,
+          stockStatus: currentVariation.stockStatus,
+          regularPrice: currentVariation.regularPrice,
+          salePrice: currentVariation.salePrice,
+          isEnabled: currentVariation.isEnabled,
+        }
+      : normalizedVariation
+  }
+
+  const mergeProductWithCurrentVariationDraft = (
+    serverProduct: Product,
+    currentProduct: Product,
+    savedVariationId?: string,
+    savedPayload?: VariationWritePayload,
+  ): Product => {
+    if (!isVariableProduct(serverProduct) || !isVariableProduct(currentProduct) || serverProduct.id !== currentProduct.id) {
+      return createEditableProductDraft(serverProduct)
+    }
+
+    const editableServerProduct = createEditableProductDraft(serverProduct) as VariableProduct
+
+    return {
+      ...editableServerProduct,
+      variations: serverProduct.variations.map((serverVariation) => {
+        const currentVariation = currentProduct.variations.find((variation) => variation.id === serverVariation.id)
+
+        if (!currentVariation) {
+          return normalizeProductVariation(serverVariation)
+        }
+
+        return mergeVariationWithLocalEdits(
+          serverVariation,
+          currentVariation,
+          serverVariation.id === savedVariationId ? savedPayload : undefined,
+        )
+      }),
+    }
+  }
+
+  const getSortedVariationImages = (variation: ProductVariation) => (
+    [...variation.media.images].sort((firstImage, secondImage) => firstImage.order - secondImage.order)
+  )
+
+  const updateVariationImageOrder = async (
+    variationId: string,
+    images: ProductImage[],
+  ) => {
+    if (!apiRequestOptions || !isVariableProduct(simpleProductDraft)) {
+      setProductModalError('Inicia sesión para actualizar imágenes de variación.')
+
+      return
+    }
+
+    if (images.length === 0) {
+      return
+    }
+
+    setSavingVariationImageIds((currentIds) => [...currentIds.filter((id) => id !== variationId), variationId])
+    setVariationErrors((currentErrors) => {
+      const nextErrors = { ...currentErrors }
+      delete nextErrors[variationId]
+
+      return nextErrors
+    })
+
+    try {
+      const updatedProduct = await requestArticulosApi<Product>(
+        apiRequestOptions,
+        `/${simpleProductDraft.id}/variaciones/${variationId}/imagenes`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({
+            images: images.map((image, index) => ({
+              id: image.id,
+              isPrimary: index === 0,
+            })),
+          }),
+        },
+      )
+
+      applyUpdatedProductPreservingVariationDraft(updatedProduct)
+    } catch (error) {
+      setVariationErrors((currentErrors) => ({
+        ...currentErrors,
+        [variationId]: error instanceof Error ? error.message : 'No fue posible actualizar las imágenes de la variación.',
+      }))
+    } finally {
+      setSavingVariationImageIds((currentIds) => currentIds.filter((id) => id !== variationId))
+    }
+  }
+
+  const handleVariationImageUpload = async (
+    variationId: string,
+    files: File[],
+  ) => {
+    if (!apiRequestOptions || !isVariableProduct(simpleProductDraft)) {
+      setProductModalError('Inicia sesión para agregar imágenes de variación.')
+
+      return
+    }
+
+    const variation = simpleProductDraft.variations.find((currentVariation) => currentVariation.id === variationId)
+    const selectedFiles = files.filter((file) => file.type.startsWith('image/'))
+
+    if (!variation || selectedFiles.length === 0 || !variation.isActive) {
+      return
+    }
+
+    setSavingVariationImageIds((currentIds) => [...currentIds.filter((id) => id !== variationId), variationId])
+    setVariationErrors((currentErrors) => {
+      const nextErrors = { ...currentErrors }
+      delete nextErrors[variationId]
+
+      return nextErrors
+    })
+
+    try {
+      const uploadedImages: ProductImage[] = []
+
+      for (const file of selectedFiles) {
+        const formData = new FormData()
+        formData.append('file', file, file.name)
+
+        const uploadedImage = await requestArticulosApi<ProductImage>(
+          apiRequestOptions,
+          `/${simpleProductDraft.id}/variaciones/${variationId}/imagenes`,
+          {
+            method: 'POST',
+            body: formData,
+          },
+        )
+
+        uploadedImages.push(uploadedImage)
+      }
+
+      const nextImages = [...getSortedVariationImages(variation), ...uploadedImages].map((image, index) => ({
+        ...image,
+        isPrimary: index === 0,
+        order: index,
+      }))
+
+      await updateVariationImageOrder(variationId, nextImages)
+    } catch (error) {
+      setVariationErrors((currentErrors) => ({
+        ...currentErrors,
+        [variationId]: error instanceof Error ? error.message : 'No fue posible agregar la imagen de la variación.',
+      }))
+    } finally {
+      setSavingVariationImageIds((currentIds) => currentIds.filter((id) => id !== variationId))
+    }
+  }
+
+  const handleDeleteVariationImage = async (
+    variationId: string,
+    imageId: string,
+  ) => {
+    if (!apiRequestOptions || !isVariableProduct(simpleProductDraft)) {
+      setProductModalError('Inicia sesión para borrar imágenes de variación.')
+
+      return
+    }
+
+    setSavingVariationImageIds((currentIds) => [...currentIds.filter((id) => id !== variationId), variationId])
+    setVariationErrors((currentErrors) => {
+      const nextErrors = { ...currentErrors }
+      delete nextErrors[variationId]
+
+      return nextErrors
+    })
+
+    try {
+      const updatedProduct = await requestArticulosApi<Product>(
+        apiRequestOptions,
+        `/${simpleProductDraft.id}/variaciones/${variationId}/imagenes/${imageId}`,
+        { method: 'DELETE' },
+      )
+
+      applyUpdatedProductPreservingVariationDraft(updatedProduct)
+    } catch (error) {
+      setVariationErrors((currentErrors) => ({
+        ...currentErrors,
+        [variationId]: error instanceof Error ? error.message : 'No fue posible borrar la imagen de la variación.',
+      }))
+    } finally {
+      setSavingVariationImageIds((currentIds) => currentIds.filter((id) => id !== variationId))
+    }
+  }
+
+  const handleMoveVariationImage = (
+    variation: ProductVariation,
+    imageId: string,
+    direction: -1 | 1,
+  ) => {
+    const images = getSortedVariationImages(variation)
+    const currentIndex = images.findIndex((image) => image.id === imageId)
+    const nextIndex = currentIndex + direction
+
+    if (currentIndex === -1 || nextIndex < 0 || nextIndex >= images.length) {
+      return
+    }
+
+    const nextImages = [...images]
+    const currentImage = nextImages[currentIndex]
+    nextImages[currentIndex] = nextImages[nextIndex]
+    nextImages[nextIndex] = currentImage
+
+    updateVariationImageOrder(variation.id, nextImages)
+  }
+
+  const handleMakeVariationImagePrimary = (
+    variation: ProductVariation,
+    imageId: string,
+  ) => {
+    const images = getSortedVariationImages(variation)
+    const selectedImage = images.find((image) => image.id === imageId)
+
+    if (!selectedImage || images[0]?.id === imageId) {
+      return
+    }
+
+    updateVariationImageOrder(variation.id, [
+      selectedImage,
+      ...images.filter((image) => image.id !== imageId),
+    ])
+  }
+
+  const persistVariation = async (variationId: string, payload?: VariationWritePayload) => {
+    if (!apiRequestOptions || !isVariableProduct(simpleProductDraft)) {
+      setProductModalError('Inicia sesión para guardar variaciones.')
+
+      return
+    }
+
+    const variationToSave = simpleProductDraft.variations.find((variation) => variation.id === variationId)
+
+    if (!variationToSave) {
+      setVariationErrors((currentErrors) => ({
+        ...currentErrors,
+        [variationId]: 'La variación ya no está disponible.',
+      }))
+
+      return
+    }
+
+    const payloadToSave = payload ?? buildVariationWritePayload(variationToSave)
+
+    setSavingVariationIds((currentIds) => [...currentIds.filter((id) => id !== variationId), variationId])
+    setVariationErrors((currentErrors) => {
+      const nextErrors = { ...currentErrors }
+      delete nextErrors[variationId]
+
+      return nextErrors
+    })
+
+    try {
+      const response = await requestArticulosApi<ProductVariation | Product>(
+        apiRequestOptions,
+        `/${simpleProductDraft.id}/variaciones/${variationId}`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify(payloadToSave),
+        },
+      )
+
+      if ('type' in response) {
+        setSimpleProductDraft((currentProduct) => {
+          return mergeProductWithCurrentVariationDraft(response, currentProduct, variationId, payloadToSave)
+        })
+        replaceProductInList(response)
+      } else {
+        const normalizedVariation = normalizeProductVariation(response)
+
+        setSimpleProductDraft((currentProduct) => {
+          if (!isVariableProduct(currentProduct)) {
+            return currentProduct
+          }
+
+          return {
+            ...currentProduct,
+            variations: currentProduct.variations.map((currentVariation) => {
+              if (currentVariation.id !== normalizedVariation.id) {
+                return currentVariation
+              }
+
+              return mergeVariationWithLocalEdits(normalizedVariation, currentVariation, payloadToSave)
+            }),
+          }
+        })
+        setSimpleProducts((currentProducts) => (
+          currentProducts.map((product) => (
+            product.id === simpleProductDraft.id && isVariableProduct(product)
+              ? {
+                  ...product,
+                  variations: product.variations.map((variation) => (
+                    variation.id === normalizedVariation.id ? normalizedVariation : variation
+                  )),
+                }
+              : product
+          ))
+        ))
+      }
+    } catch (error) {
+      setVariationErrors((currentErrors) => ({
+        ...currentErrors,
+        [variationId]: error instanceof Error ? error.message : 'No fue posible guardar la variación.',
+      }))
+    } finally {
+      setSavingVariationIds((currentIds) => currentIds.filter((id) => id !== variationId))
+    }
+  }
+
+  const saveVariableDraftVariations = async (
+    productId: string,
+    sourceProduct: VariableProduct,
+    baseProduct: Product,
+  ) => {
+    let nextProduct = isVariableProduct(baseProduct)
+      ? mergeProductWithCurrentVariationDraft(baseProduct, sourceProduct)
+      : baseProduct
+    const variationsToSave = sourceProduct.variations.filter((variation) => variation.isActive)
+
+    for (const variation of variationsToSave) {
+      const payloadToSave = buildVariationWritePayload(variation)
+      const response = await requestArticulosApi<ProductVariation | Product>(
+        apiRequestOptions as ApiRequestOptions,
+        `/${productId}/variaciones/${variation.id}`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify(payloadToSave),
+        },
+      )
+
+      if ('type' in response) {
+        nextProduct = mergeProductWithCurrentVariationDraft(response, sourceProduct, variation.id, payloadToSave)
+      } else if (isVariableProduct(nextProduct)) {
+        const normalizedVariation = normalizeProductVariation(response)
+
+        nextProduct = {
+          ...nextProduct,
+          variations: nextProduct.variations.map((currentVariation) => (
+            currentVariation.id === normalizedVariation.id
+              ? mergeVariationWithLocalEdits(normalizedVariation, variation, payloadToSave)
+              : currentVariation
+          )),
+        }
+      }
+    }
+
+    return nextProduct
+  }
+
+  const saveVariableProductStatus = async (
+    sourceProduct: VariableProduct,
+    savedProduct: Product,
+  ) => {
+    const readiness = getVariableDraftReadiness(sourceProduct)
+    let nextProduct = savedProduct
+    const productId = savedProduct.id
+
+    if (readiness.isReady) {
+      const activatedProduct = await requestArticulosApi<Product>(
+        apiRequestOptions as ApiRequestOptions,
+        `/${productId}/activar`,
+        { method: 'POST' },
+      )
+
+      nextProduct = mergeProductWithCurrentVariationDraft(activatedProduct, savedProduct)
+    } else if (isVariableProduct(savedProduct) && savedProduct.metadata.status === 'active') {
+      const draftProduct = await requestArticulosApi<Product>(
+        apiRequestOptions as ApiRequestOptions,
+        `/${productId}/borrador`,
+        { method: 'POST' },
+      )
+
+      nextProduct = mergeProductWithCurrentVariationDraft(draftProduct, savedProduct)
+    }
+
+    return {
+      product: nextProduct,
+      readiness,
+    }
+  }
+
   const handleProductModalPrimaryAction = async () => {
     const productToSave = buildSimpleProductToSave()
 
@@ -1700,12 +2559,12 @@ export const Articulos = () => {
       }
 
       clearSimpleProductErrors(['name', 'shortDescription', 'regularPrice'])
-      setActiveProductTab('inventario')
+      setActiveProductTab(isVariableProduct(productToSave) ? 'atributos' : 'inventario')
 
       return
     }
 
-    if (activeProductTab === 'inventario') {
+    if (activeProductTab === 'inventario' && isSimpleProduct(productToSave)) {
       const validationErrors = validateSimpleProductInventory(productToSave)
 
       if (Object.keys(validationErrors).length > 0) {
@@ -1724,7 +2583,7 @@ export const Articulos = () => {
       ...validateSimpleProductGeneral(productToSave),
       ...validateSimpleProductInventory(productToSave),
     }
-    const attributeValidationError = validateSimpleProductAttributes(productToSave)
+    const attributeValidationError = validateSimpleProductAttributes(productToSave) ?? validateVariableProductAttributes(productToSave)
 
     if (Object.keys(validationErrors).length > 0) {
       setSimpleProductErrors(validationErrors)
@@ -1751,7 +2610,7 @@ export const Articulos = () => {
 
     if (productModalMode === 'edit') {
       try {
-        const updatedProductWithoutImages = await requestArticulosApi<SimpleProduct>(
+        const updatedProductWithoutImages = await requestArticulosApi<Product>(
           apiRequestOptions,
           `/${productToSave.id}/editar`,
           {
@@ -1765,7 +2624,34 @@ export const Articulos = () => {
           apiRequestOptions,
         )
 
+        if (isVariableProduct(productToSave) && isVariableProduct(updatedProduct)) {
+          const productWithSavedVariations = await saveVariableDraftVariations(
+            updatedProduct.id,
+            productToSave,
+            updatedProduct,
+          )
+          const { product: finalProduct, readiness } = await saveVariableProductStatus(
+            productToSave,
+            productWithSavedVariations,
+          )
+
+          replaceProductInList(finalProduct)
+          setSimpleProductDraft(createEditableProductDraft(finalProduct))
+          setVariationErrors(readiness.isReady ? {} : readiness.variationErrors)
+          setActiveProductTab('variaciones')
+          setIsSavingProduct(false)
+
+          return
+        }
+
         replaceProductInList(updatedProduct)
+        if (isVariableProduct(updatedProduct)) {
+          setSimpleProductDraft(createEditableProductDraft(updatedProduct))
+          setActiveProductTab('variaciones')
+          setIsSavingProduct(false)
+
+          return
+        }
       } catch (error) {
         setProductModalError(error instanceof Error ? error.message : 'No fue posible actualizar el artículo.')
         setIsSavingProduct(false)
@@ -1774,7 +2660,7 @@ export const Articulos = () => {
       }
     } else {
       try {
-        const createdProduct = await requestArticulosApi<SimpleProduct>(
+        const createdProduct = await requestArticulosApi<Product>(
           apiRequestOptions,
           '/agregar',
           {
@@ -1791,6 +2677,34 @@ export const Articulos = () => {
         setSelectedProductId(productWithImages.id)
         setCurrentProductPage(1)
         fetchProducts(1, activeSearchQuery)
+        if (isVariableProduct(productToSave) && isVariableProduct(productWithImages)) {
+          const productWithSavedVariations = productToSave.variations.length > 0
+            ? await saveVariableDraftVariations(
+                productWithImages.id,
+                {
+                  ...productToSave,
+                  id: productWithImages.id,
+                },
+                productWithImages,
+              )
+            : productWithImages
+          const { product: finalProduct, readiness } = await saveVariableProductStatus(
+            {
+              ...productToSave,
+              id: productWithImages.id,
+            },
+            productWithSavedVariations,
+          )
+
+          replaceProductInList(finalProduct)
+          setSimpleProductDraft(createEditableProductDraft(finalProduct))
+          setProductModalMode('edit')
+          setActiveProductTab('variaciones')
+          setVariationErrors(readiness.isReady ? {} : readiness.variationErrors)
+          setIsSavingProduct(false)
+
+          return
+        }
       } catch (error) {
         setProductModalError(error instanceof Error ? error.message : 'No fue posible crear el artículo.')
         setIsSavingProduct(false)
@@ -1805,6 +2719,7 @@ export const Articulos = () => {
     setProductModalMode('create')
     setDeletedProductImageIds([])
     setProductImageObjectUrls({})
+    requestedProductImageIdsRef.current.clear()
     clearAdjustment()
     setIsSavingProduct(false)
     handleCloseActionModal()
@@ -1938,7 +2853,92 @@ export const Articulos = () => {
     </aside>
   )
 
-  const productPrimaryActionLabel = activeProductTab === 'atributos' ? 'Guardar' : 'Guardar y continuar'
+  const renderVariationImageManager = (variation: ProductVariation) => {
+    const variationImages = getSortedVariationImages(variation)
+    const isBusy = savingVariationImageIds.includes(variation.id)
+    const isEditable = variation.isActive && !isBusy
+
+    return (
+      <div className='articulos-ui__variation-images'>
+        <div className='articulos-ui__variation-image-strip' aria-label={`Imágenes de ${getVariationLabel(variation)}`}>
+          {variationImages.length === 0 ? (
+            <span className='articulos-ui__variation-images-empty'>Sin imágenes</span>
+          ) : (
+            variationImages.map((image, index) => (
+              <div
+                className={`articulos-ui__variation-image-thumb ${image.isPrimary || index === 0 ? 'articulos-ui__variation-image-thumb--primary' : ''}`}
+                key={image.id}
+              >
+                <button
+                  aria-label='Usar como imagen principal'
+                  className='articulos-ui__variation-image-preview'
+                  disabled={!isEditable || index === 0}
+                  onClick={() => handleMakeVariationImagePrimary(variation, image.id)}
+                  type='button'
+                >
+                  <img src={getProductImageDisplayUrl(image)} alt={image.altText || `Imagen ${index + 1}`} />
+                </button>
+                <div className='articulos-ui__variation-image-actions'>
+                  <button
+                    aria-label='Mover imagen a la izquierda'
+                    disabled={!isEditable || index === 0}
+                    onClick={() => handleMoveVariationImage(variation, image.id, -1)}
+                    type='button'
+                  >
+                    ‹
+                  </button>
+                  <button
+                    aria-label='Eliminar imagen'
+                    disabled={!isEditable}
+                    onClick={() => handleDeleteVariationImage(variation.id, image.id)}
+                    type='button'
+                  >
+                    ×
+                  </button>
+                  <button
+                    aria-label='Mover imagen a la derecha'
+                    disabled={!isEditable || index === variationImages.length - 1}
+                    onClick={() => handleMoveVariationImage(variation, image.id, 1)}
+                    type='button'
+                  >
+                    ›
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        <label
+          className={`articulos-ui__variation-image-add ${!isEditable ? 'articulos-ui__variation-image-add--disabled' : ''}`}
+          aria-disabled={!isEditable}
+        >
+          <input
+            accept='image/*'
+            disabled={!isEditable}
+            multiple
+            onChange={(event) => {
+              handleVariationImageUpload(variation.id, Array.from(event.target.files ?? []))
+              event.target.value = ''
+            }}
+            type='file'
+          />
+          <span aria-hidden='true'>+</span>
+          {isBusy ? 'Guardando...' : 'Agregar'}
+        </label>
+      </div>
+    )
+  }
+
+  const productPrimaryActionLabel = (
+    activeProductTab === 'atributos'
+      ? isVariableDraft && productModalMode === 'create'
+        ? 'Guardar y generar variaciones'
+        : 'Guardar'
+      : activeProductTab === 'variaciones'
+        ? 'Guardar'
+        : 'Guardar y continuar'
+  )
   const productModalModeLabel = productModalMode === 'edit' ? 'Editar' : 'Agregar'
   const resultsEmptyMessage = isLoadingProducts
     ? 'Cargando artículos...'
@@ -2025,6 +3025,10 @@ export const Articulos = () => {
                   paginatedProducts.map((product) => {
                     const isProductSelected = selectedProductId === product.id
                     const isProductDeletePending = pendingDeleteProductId === product.id
+                    const enabledVariations = isVariableProduct(product) ? getEnabledActiveVariations(product) : []
+                    const variableStock = enabledVariations.reduce<number | null>((total, variation) => (
+                      variation.quantity === null ? total : (total ?? 0) + variation.quantity
+                    ), null)
 
                     return (
                       <div
@@ -2037,8 +3041,13 @@ export const Articulos = () => {
                         role='row'
                       >
                       <div className='articulos-ui__results-data articulos-ui__results-cell--description' role='cell'>
-                        <strong>{product.inventory.sku || product.id}</strong>
-                        <span>{product.general.name || 'Producto sin nombre'}</span>
+                        <strong>{isSimpleProduct(product) ? product.inventory.sku || product.id : product.id}</strong>
+                        <span>
+                          {product.general.name || 'Producto sin nombre'}
+                          <small className='articulos-ui__results-product-meta'>
+                            {formatProductTypeLabel(product)} · {getProductStatusLabel(product)}
+                          </small>
+                        </span>
                       </div>
                       <div className='articulos-ui__results-data articulos-ui__results-cell--stock' role='cell'>
                         {adjustingProductId === product.id ? (
@@ -2047,6 +3056,22 @@ export const Articulos = () => {
                             onClick={(event) => event.stopPropagation()}
                             onDoubleClick={(event) => event.stopPropagation()}
                           >
+                            {isVariableProduct(product) && (
+                              <select
+                                aria-label='Variación a ajustar'
+                                className='articulos-ui__stock-adjuster-select'
+                                disabled={isAdjustingProduct}
+                                onChange={(event) => handleSelectAdjustmentVariation(event.target.value)}
+                                value={adjustingVariationId ?? ''}
+                              >
+                                <option value=''>Variación</option>
+                                {product.variations.map((variation) => (
+                                  <option key={variation.id} value={variation.id}>
+                                    {variation.sku || getVariationLabel(variation)}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
                             <input
                               aria-invalid={Boolean(adjustmentError)}
                               aria-label='Nueva cantidad de existencias'
@@ -2073,7 +3098,9 @@ export const Articulos = () => {
                             />
                           </div>
                         ) : (
-                          product.inventory.quantity ?? '-'
+                          isVariableProduct(product)
+                            ? variableStock ?? '-'
+                            : product.inventory.quantity ?? '-'
                         )}
                       </div>
                       <div className='articulos-ui__results-data articulos-ui__results-cell--price' role='cell'>
@@ -2165,8 +3192,8 @@ export const Articulos = () => {
             {selectedProduct ? (
               <dl className='articulos-ui__detail-list'>
                 <div>
-                  <dt>SKU</dt>
-                  <dd>{selectedProduct.inventory.sku}</dd>
+                  <dt>{isVariableProduct(selectedProduct) ? 'Tipo' : 'SKU'}</dt>
+                  <dd>{isVariableProduct(selectedProduct) ? 'Producto variable' : selectedProduct.inventory.sku}</dd>
                 </div>
                 <div>
                   <dt>Nombre</dt>
@@ -2177,12 +3204,20 @@ export const Articulos = () => {
                   <dd>{formatProductPrice(selectedProduct.general.regularPrice)}</dd>
                 </div>
                 <div>
-                  <dt>Existencias</dt>
-                  <dd>{selectedProduct.inventory.quantity ?? '-'}</dd>
+                  <dt>{isVariableProduct(selectedProduct) ? 'Variaciones' : 'Existencias'}</dt>
+                  <dd>
+                    {isVariableProduct(selectedProduct)
+                      ? `${getEnabledActiveVariations(selectedProduct).length}/${selectedProduct.variations.length}`
+                      : selectedProduct.inventory.quantity ?? '-'}
+                  </dd>
                 </div>
                 <div>
                   <dt>Estado</dt>
-                  <dd>{stockStatusLabels[selectedProduct.inventory.stockStatus]}</dd>
+                  <dd>
+                    {isVariableProduct(selectedProduct)
+                      ? getProductStatusLabel(selectedProduct)
+                      : stockStatusLabels[selectedProduct.inventory.stockStatus]}
+                  </dd>
                 </div>
               </dl>
             ) : (
@@ -2226,10 +3261,15 @@ export const Articulos = () => {
                       <select
                         className='articulos-ui__product-type-select'
                         value={productType}
-                        onChange={(event) => setProductType(event.target.value as ProductTypeOption)}
+                        onChange={(event) => handleProductTypeChange(event.target.value as ProductTypeOption)}
+                        disabled={productModalMode === 'edit'}
                       >
                         {productTypeOptions.map((option) => (
-                          <option key={option} value={option}>
+                          <option
+                            disabled={option === 'Producto compuesto' || option === 'Servicio'}
+                            key={option}
+                            value={option}
+                          >
                             {option}
                           </option>
                         ))}
@@ -2249,7 +3289,7 @@ export const Articulos = () => {
 
                 <main className='articulos-ui__product-modal-main'>
                   <nav className='articulos-ui__product-tabs' aria-label='Secciones del producto'>
-                    {productTabs.map((tab) => (
+                    {visibleProductTabs.map((tab) => (
                       <button
                         key={tab.id}
                         className={`articulos-ui__product-tab ${activeProductTab === tab.id ? 'articulos-ui__product-tab--active' : ''}`}
@@ -2373,7 +3413,7 @@ export const Articulos = () => {
                               onChange={(event) => updateSimpleProductInventory({ sku: event.target.value })}
                               required
                               type='text'
-                              value={simpleProductDraft.inventory.sku}
+                              value={simpleDraftInventory.sku}
                             />
                             <button className='articulos-ui__inventory-help' type='button' aria-label='Ayuda sobre SKU'>
                               ?
@@ -2405,7 +3445,7 @@ export const Articulos = () => {
                                   min='0'
                                   onChange={(event) => updateSimpleProductInventory({ quantity: parseNumberInput(event.target.value) })}
                                   type='number'
-                                  value={simpleProductDraft.inventory.quantity ?? ''}
+                                  value={simpleDraftInventory.quantity ?? ''}
                                 />
                                 <button className='articulos-ui__inventory-help' type='button' aria-label='Ayuda sobre cantidad'>
                                   ?
@@ -2417,7 +3457,7 @@ export const Articulos = () => {
                                 <div className='articulos-ui__inventory-radio-stack'>
                                   <label className='articulos-ui__inventory-radio-label'>
                                     <input
-                                      checked={simpleProductDraft.inventory.reservationPolicy === 'disabled'}
+                                      checked={simpleDraftInventory.reservationPolicy === 'disabled'}
                                       name='inventory-reservations'
                                       onChange={() => updateSimpleProductInventory({ reservationPolicy: 'disabled' })}
                                       type='radio'
@@ -2426,7 +3466,7 @@ export const Articulos = () => {
                                   </label>
                                   <label className='articulos-ui__inventory-radio-label'>
                                     <input
-                                      checked={simpleProductDraft.inventory.reservationPolicy === 'allowed'}
+                                      checked={simpleDraftInventory.reservationPolicy === 'allowed'}
                                       name='inventory-reservations'
                                       onChange={() => updateSimpleProductInventory({ reservationPolicy: 'allowed' })}
                                       type='radio'
@@ -2442,7 +3482,7 @@ export const Articulos = () => {
                                   className='articulos-ui__inventory-input'
                                   onChange={(event) => updateSimpleProductInventory({ lowStockThreshold: parseNumberInput(event.target.value) })}
                                   type='text'
-                                  value={simpleProductDraft.inventory.lowStockThreshold ?? ''}
+                                  value={simpleDraftInventory.lowStockThreshold ?? ''}
                                 />
                                 <button className='articulos-ui__inventory-help' type='button' aria-label='Ayuda sobre umbral de pocas existencias'>
                                   ?
@@ -2455,7 +3495,7 @@ export const Articulos = () => {
                               <div className='articulos-ui__inventory-radio-stack'>
                                 <label className='articulos-ui__inventory-radio-label'>
                                   <input
-                                    checked={simpleProductDraft.inventory.stockStatus === 'in_stock'}
+                                    checked={simpleDraftInventory.stockStatus === 'in_stock'}
                                     name='inventory-status'
                                     onChange={() => updateSimpleProductInventory({ stockStatus: 'in_stock' })}
                                     type='radio'
@@ -2464,7 +3504,7 @@ export const Articulos = () => {
                                 </label>
                                 <label className='articulos-ui__inventory-radio-label'>
                                   <input
-                                    checked={simpleProductDraft.inventory.stockStatus === 'out_of_stock'}
+                                    checked={simpleDraftInventory.stockStatus === 'out_of_stock'}
                                     name='inventory-status'
                                     onChange={() => updateSimpleProductInventory({ stockStatus: 'out_of_stock' })}
                                     type='radio'
@@ -2473,7 +3513,7 @@ export const Articulos = () => {
                                 </label>
                                 <label className='articulos-ui__inventory-radio-label'>
                                   <input
-                                    checked={simpleProductDraft.inventory.stockStatus === 'backorder'}
+                                    checked={simpleDraftInventory.stockStatus === 'backorder'}
                                     name='inventory-status'
                                     onChange={() => updateSimpleProductInventory({ stockStatus: 'backorder' })}
                                     type='radio'
@@ -2488,7 +3528,156 @@ export const Articulos = () => {
                           )}
                           </div>
 
-                          {renderProductImagePanel('compact')}
+                        </div>
+                      ) : activeProductTab === 'variaciones' && isVariableDraft ? (
+                        <div className='articulos-ui__variations-panel'>
+                          <header className='articulos-ui__variations-header'>
+                            <div>
+                              <h3>Variaciones generadas</h3>
+                              <p>
+                                {simpleProductDraft.variations.length === 0
+                                  ? 'Guarda los atributos usados para variaciones para generar combinaciones.'
+                                  : `${getEnabledActiveVariations(simpleProductDraft).length} variaciones habilitadas de ${simpleProductDraft.variations.length}`}
+                              </p>
+                              {variableDraftReadiness && variableDraftReadiness.missingCount > 0 && (
+                                <p className='articulos-ui__variations-draft-note'>
+                                  *En borrador, faltan {variableDraftReadiness.missingCount}/{variableDraftReadiness.requiredCount} datos*
+                                </p>
+                              )}
+                            </div>
+                            <label className='articulos-ui__variations-shared-toggle'>
+                              <input
+                                checked={useSameVariationData}
+                                disabled={simpleProductDraft.variations.filter((variation) => variation.isActive).length < 2}
+                                onChange={(event) => handleUseSameVariationDataChange(event.target.checked)}
+                                type='checkbox'
+                              />
+                              <span>Usar mismos datos en todas las variaciones. Esta acción excluye SKU y carrusel de imágenes.</span>
+                            </label>
+                          </header>
+
+                          {simpleProductDraft.variations.length === 0 ? (
+                            <div className='articulos-ui__variations-empty'>
+                              <span>Sin variaciones</span>
+                            </div>
+                          ) : (
+                            <div className='articulos-ui__variations-table-wrap'>
+                              <table className='articulos-ui__variations-table'>
+                                <thead>
+                                  <tr>
+                                    <th>Variación</th>
+                                    <th>SKU</th>
+                                    <th>Cantidad</th>
+                                    <th>Estado</th>
+                                    <th>Precio</th>
+                                    <th>Rebajado</th>
+                                    <th>Habilitada</th>
+                                    <th>Imágenes</th>
+                                    <th></th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {simpleProductDraft.variations.map((variation) => {
+                                    const isSavingVariation = savingVariationIds.includes(variation.id)
+                                    const variationError = variationErrors[variation.id]
+                                    const variationIsIncomplete = variation.isEnabled && variation.isActive && !variation.sku?.trim()
+
+                                    return (
+                                      <React.Fragment key={variation.id}>
+                                      <tr className={variationError || variationIsIncomplete ? 'articulos-ui__variation-row--error' : ''}>
+                                        <td>
+                                          <strong>{getVariationLabel(variation)}</strong>
+                                          {!variation.isActive && <span>Inactiva</span>}
+                                        </td>
+                                        <td>
+                                          <input
+                                            aria-invalid={Boolean(variationError || variationIsIncomplete)}
+                                            className='articulos-ui__variation-input'
+                                            onChange={(event) => updateDraftVariation(variation.id, { sku: event.target.value })}
+                                            type='text'
+                                            value={variation.sku ?? ''}
+                                          />
+                                        </td>
+                                        <td>
+                                          <input
+                                            className='articulos-ui__variation-input articulos-ui__variation-input--number'
+                                            min='0'
+                                            onChange={(event) => updateVariationSharedField(variation.id, { quantity: parseNumberInput(event.target.value) })}
+                                            type='number'
+                                            value={variation.quantity ?? ''}
+                                          />
+                                        </td>
+                                        <td>
+                                          <select
+                                            className='articulos-ui__variation-input'
+                                            onChange={(event) => {
+                                              const stockStatus = event.target.value as StockStatus
+                                              updateVariationSharedField(variation.id, { stockStatus })
+                                            }}
+                                            value={variation.stockStatus}
+                                          >
+                                            <option value='in_stock'>Hay existencias</option>
+                                            <option value='out_of_stock'>Sin existencias</option>
+                                            <option value='backorder'>Se puede reservar</option>
+                                          </select>
+                                        </td>
+                                        <td>
+                                          <input
+                                            className='articulos-ui__variation-input articulos-ui__variation-input--number'
+                                            inputMode='decimal'
+                                            onChange={(event) => updateVariationSharedField(variation.id, { regularPrice: parseNumberInput(event.target.value) })}
+                                            type='text'
+                                            value={variation.regularPrice ?? ''}
+                                          />
+                                        </td>
+                                        <td>
+                                          <input
+                                            className='articulos-ui__variation-input articulos-ui__variation-input--number'
+                                            inputMode='decimal'
+                                            onChange={(event) => updateVariationSharedField(variation.id, { salePrice: parseNumberInput(event.target.value) })}
+                                            type='text'
+                                            value={variation.salePrice ?? ''}
+                                          />
+                                        </td>
+                                        <td>
+                                          <label className='articulos-ui__variation-check'>
+                                            <input
+                                              checked={variation.isEnabled}
+                                              onChange={(event) => {
+                                                updateVariationSharedField(variation.id, { isEnabled: event.target.checked })
+                                              }}
+                                              type='checkbox'
+                                            />
+                                          </label>
+                                        </td>
+                                        <td>
+                                          {renderVariationImageManager(variation)}
+                                        </td>
+                                        <td>
+                                          <button
+                                            className='articulos-ui__variation-save'
+                                            disabled={isSavingVariation}
+                                            onClick={() => persistVariation(variation.id)}
+                                            type='button'
+                                          >
+                                            {isSavingVariation ? '...' : 'Guardar'}
+                                          </button>
+                                        </td>
+                                      </tr>
+                                      {(variationError || variationIsIncomplete) && (
+                                        <tr className='articulos-ui__variation-row--error'>
+                                          <td className='articulos-ui__variation-error' colSpan={9}>
+                                            {variationError ?? 'Captura un SKU para esta variación habilitada.'}
+                                          </td>
+                                        </tr>
+                                      )}
+                                      </React.Fragment>
+                                    )
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <div className='articulos-ui__attributes-form'>
@@ -2596,6 +3785,7 @@ export const Articulos = () => {
                                         </select>
                                       </label>
 
+                                      {/*
                                       <label className='articulos-ui__attribute-visible'>
                                         <input
                                           checked={productAttribute.visible}
@@ -2604,15 +3794,18 @@ export const Articulos = () => {
                                         />
                                         <span>Visible en la página de productos</span>
                                       </label>
+                                      */}
 
-                                      <label className='articulos-ui__attribute-visible'>
-                                        <input
-                                          checked={productAttribute.usedForVariations}
-                                          onChange={(event) => updateProductAttribute(productAttribute.id, { usedForVariations: event.target.checked })}
-                                          type='checkbox'
-                                        />
-                                        <span>Usado para variaciones</span>
-                                      </label>
+                                      {isVariableDraft && (
+                                        <label className='articulos-ui__attribute-visible'>
+                                          <input
+                                            checked={productAttribute.usedForVariations}
+                                            onChange={(event) => updateProductAttribute(productAttribute.id, { usedForVariations: event.target.checked })}
+                                            type='checkbox'
+                                          />
+                                          <span>Usado para variaciones</span>
+                                        </label>
+                                      )}
                                     </div>
 
                                     <div className='articulos-ui__attribute-field articulos-ui__attribute-field--values'>

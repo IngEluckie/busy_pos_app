@@ -1,0 +1,146 @@
+.cash-register-login {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: #eef3f6;
+}
+
+.cash-register-login__panel {
+  width: min(92vw, 460px);
+  border: 1px solid #c5d0d9;
+  border-radius: 12px;
+  padding: 22px;
+  background: #ffffff;
+  box-shadow: 0 20px 54px rgba(14, 30, 43, 0.18);
+}
+
+.cash-register-login__header {
+  margin-bottom: 18px;
+}
+
+.cash-register-login__title {
+  margin: 0;
+  color: #1b2a36;
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.cash-register-login__subtitle {
+  margin: 6px 0 0;
+  color: #667987;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.cash-register-login__form,
+.cash-register-login__selector {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cash-register-login__selector {
+  margin-top: 18px;
+  border-top: 1px solid #e3e9ee;
+  padding-top: 18px;
+}
+
+.cash-register-login__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cash-register-login__label {
+  color: #1b2a36;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.cash-register-login__input {
+  min-height: 42px;
+  border: 1px solid #bfccd6;
+  border-radius: 8px;
+  padding: 0 12px;
+  color: #172631;
+  font: inherit;
+  background: #ffffff;
+}
+
+.cash-register-login__input:focus {
+  border-color: #3f7ea3;
+  outline: 2px solid rgba(63, 126, 163, 0.18);
+}
+
+.cash-register-login__input:disabled {
+  background: #f2f5f7;
+  color: #7b8c98;
+}
+
+.cash-register-login__button {
+  min-height: 44px;
+  border: 1px solid #284f67;
+  border-radius: 8px;
+  background: #2e5f7c;
+  color: #ffffff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease, transform 120ms ease;
+}
+
+.cash-register-login__button:hover:not(:disabled) {
+  background: #244c63;
+  border-color: #1e4054;
+  transform: translateY(-1px);
+}
+
+.cash-register-login__button:focus-visible {
+  outline: 2px solid #6fa6c4;
+  outline-offset: 2px;
+}
+
+.cash-register-login__button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.cash-register-login__button--save {
+  border-color: #35704c;
+  background: #3f865c;
+}
+
+.cash-register-login__button--save:hover:not(:disabled) {
+  border-color: #2d6041;
+  background: #35704c;
+}
+
+.cash-register-login__error {
+  margin: 14px 0 0;
+  border: 1px solid #efb8b8;
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #8b1e1e;
+  background: #fff3f3;
+  font-size: 13px;
+}
+
+.cash-register-login__server {
+  margin: 14px 0 0;
+  color: #667987;
+  font-size: 12px;
+}
+
+@media (max-width: 560px) {
+  .cash-register-login {
+    align-items: stretch;
+    padding: 14px;
+  }
+
+  .cash-register-login__panel {
+    width: 100%;
+    padding: 18px;
+  }
+}

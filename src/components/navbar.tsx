@@ -2,6 +2,7 @@ import React from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import './globalStyles.css'
 import { useSession } from '../context/SessionContext'
+import { getStoredCashRegisterName } from '../context/cashRegisterStorage'
 
 // Import images
 import operacionesIcon from './allMedia/icons/operaciones.png'
@@ -15,6 +16,7 @@ export const Navbar = () => {
   const { user, logout } = useSession()
   const navigate = useNavigate()
   const usernameLabel = user?.username || user?.fullname || 'Usuario'
+  const cashRegisterName = getStoredCashRegisterName() || 'Sin caja'
 
   const handleLogout = () => {
     logout()
@@ -57,7 +59,7 @@ export const Navbar = () => {
       <div className="navbar__section navbar__section--right">
         <div className="navbar__panel">
           <div className="navbar__panel-labels">
-            <span className="navbar__panel-title">nombre caja</span>
+            <span className="navbar__panel-title">{cashRegisterName}</span>
             <span className="navbar__panel-version">versión v1.0.0</span>
           </div>
           <div className="navbar__panel-body">

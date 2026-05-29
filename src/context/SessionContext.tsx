@@ -7,10 +7,11 @@ import React, {
   useMemo,
   useState
 } from 'react'
+import { getLocationContext } from './sessionLocation'
+import type { SessionLocation } from './sessionLocation'
 
 const SESSION_STORAGE_KEY = 'busy_pos_session'
 const SESSION_STORAGE_VERSION = 1
-const API_PORT = '8000'
 
 export type SessionUser = {
   id: number
@@ -21,14 +22,6 @@ export type SessionUser = {
   cellphone: number | null
   email: string | null
   typeUser: number
-}
-
-type SessionLocation = {
-  apiBaseUrl: string
-  clientOrigin: string
-  clientHost: string
-  clientHostname: string
-  clientPort: string
 }
 
 type StoredSession = SessionLocation & {
@@ -62,18 +55,6 @@ type JwtPayload = {
 }
 
 const SessionContext = createContext<SessionContextValue | undefined>(undefined)
-
-const getLocationContext = (): SessionLocation => {
-  const { protocol, origin, host, hostname, port } = window.location
-
-  return {
-    apiBaseUrl: `${protocol}//${hostname}:${API_PORT}`,
-    clientOrigin: origin,
-    clientHost: host,
-    clientHostname: hostname,
-    clientPort: port
-  }
-}
 
 const decodeJwtPayload = (token: string): JwtPayload | null => {
   const payload = token.split('.')[1]

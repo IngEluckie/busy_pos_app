@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
 //import App from './App';
+import { CashRegisterGate } from './components/cashRegisterGate';
 import { SessionProvider } from './context/SessionContext';
 import { MainRouter } from './routers/mainRouter';
 //import reportWebVitals from './reportWebVitals';
@@ -11,9 +12,11 @@ const root = ReactDOM.createRoot(
 );
 root.render(
   <React.StrictMode>
-    <SessionProvider>
-      <MainRouter />
-    </SessionProvider>
+    <CashRegisterGate>
+      <SessionProvider>
+        <MainRouter />
+      </SessionProvider>
+    </CashRegisterGate>
   </React.StrictMode>
 );
 
