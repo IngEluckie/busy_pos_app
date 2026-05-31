@@ -1,0 +1,20 @@
+- main [ref=e3]:
+  - region "Caja login" [ref=e4]:
+    - generic [ref=e5]:
+      - heading "Caja login" [level=1] [ref=e6]
+      - paragraph [ref=e7]: Autentica un usuario autorizado y selecciona la caja de esta terminal.
+    - generic [ref=e8]:
+      - generic [ref=e9]:
+        - generic [ref=e10]: Usuario administrador
+        - textbox "Usuario administrador" [active] [ref=e11]
+      - generic [ref=e12]:
+        - generic [ref=e13]: Contraseña
+        - textbox "Contraseña" [ref=e14]
+      - button "Validar usuario" [ref=e15] [cursor=pointer]
+    - generic [ref=e16]:
+      - generic [ref=e17]:
+        - generic [ref=e18]: Caja
+        - combobox "Caja" [disabled] [ref=e19]:
+          - option "Valida un usuario para cargar cajas" [selected]
+      - button "Guardar caja" [disabled] [ref=e20]
+    - paragraph [ref=e21]: "API: http://localhost:8000"

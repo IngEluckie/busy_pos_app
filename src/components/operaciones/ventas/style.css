@@ -129,13 +129,76 @@
   border: 1px solid #b7b7b7;
   height: 140px;
   position: relative;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
 }
 
-.ventas-ui__product-preview::before {
+.ventas-ui__product-preview::after {
   content: '';
   position: absolute;
+  inset: 0;
+  background: #000000;
+  opacity: 0;
+  transition: opacity 140ms ease;
+  pointer-events: none;
+}
+
+.ventas-ui__product-preview:hover::after,
+.ventas-ui__product-preview:focus-within::after {
+  opacity: 0.34;
+}
+
+.ventas-ui__product-preview-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #ffffff;
+}
+
+.ventas-ui__product-preview-empty {
+  position: absolute;
   inset: 8px;
+  display: grid;
+  place-items: center;
   background: #9b9b9b;
+  color: #f3f3f3;
+  font-weight: 700;
+}
+
+.ventas-ui__image-controls {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.ventas-ui__product-preview:hover .ventas-ui__image-controls,
+.ventas-ui__product-preview:focus-within .ventas-ui__image-controls {
+  opacity: 1;
+}
+
+.ventas-ui__image-arrow {
+  appearance: none;
+  border: 1px solid #ffffff;
+  background: rgba(31, 31, 31, 0.72);
+  color: #ffffff;
+  width: 30px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ventas-ui__image-arrow:hover {
+  background: rgba(11, 119, 179, 0.86);
 }
 
 .ventas-ui__capture-fields {
@@ -185,6 +248,142 @@
   width: 260px;
 }
 
+.ventas-ui__search-wrap {
+  position: relative;
+}
+
+.ventas-ui__client-search-wrap {
+  width: 480px;
+}
+
+.ventas-ui__search-results {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 0;
+  width: 470px;
+  max-height: 282px;
+  overflow: auto;
+  z-index: 6;
+  background: #f3f3f3;
+  border: 1px solid #8f8f8f;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.2);
+}
+
+.ventas-ui__client-search-results {
+  width: 100%;
+  max-height: 232px;
+}
+
+.ventas-ui__search-status {
+  padding: 10px 12px;
+  color: #4a4a4a;
+  font-weight: 700;
+}
+
+.ventas-ui__search-status--error {
+  color: #b31212;
+}
+
+.ventas-ui__search-option {
+  appearance: none;
+  border: none;
+  border-bottom: 1px solid #c7c7c7;
+  background: #f3f3f3;
+  width: 100%;
+  min-height: 54px;
+  padding: 6px 8px;
+  display: grid;
+  grid-template-columns: 42px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ventas-ui__search-option:last-child {
+  border-bottom: none;
+}
+
+.ventas-ui__search-option:hover,
+.ventas-ui__search-option:focus-visible {
+  background: #dcebf5;
+  outline: none;
+}
+
+.ventas-ui__client-search-option {
+  min-height: 36px;
+  grid-template-columns: minmax(0, 1fr);
+  padding: 8px 10px;
+}
+
+.ventas-ui__client-search-name {
+  color: #044f82;
+  font-size: 12px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ventas-ui__search-thumb {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  background: #ffffff;
+  border: 1px solid #b9b9b9;
+  color: #7a7a7a;
+  overflow: hidden;
+}
+
+.ventas-ui__search-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.ventas-ui__search-copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.ventas-ui__search-copy strong,
+.ventas-ui__search-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ventas-ui__search-copy strong {
+  color: #044f82;
+  font-size: 12px;
+}
+
+.ventas-ui__search-copy small {
+  color: #4e4e4e;
+  font-size: 11px;
+}
+
+.ventas-ui__stock-pill {
+  min-width: 42px;
+  padding: 3px 6px;
+  border: 1px solid #a9a9a9;
+  background: #e6e6e6;
+  color: #353535;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.ventas-ui__stock-pill--out_of_stock {
+  color: #a60e0e;
+}
+
+.ventas-ui__stock-pill--backorder {
+  color: #8a5a00;
+}
+
 .ventas-ui__input--date {
   width: 100px;
   text-align: center;
@@ -203,7 +402,8 @@
 }
 
 .ventas-ui__input--client {
-  width: 480px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .ventas-ui__input--extra {
@@ -223,6 +423,11 @@
 
 .ventas-ui__tiny-btn:hover {
   background: #dbdbdb;
+}
+
+.ventas-ui__tiny-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .ventas-ui__items-block {
@@ -257,6 +462,61 @@
   background: #dfdfdf;
   border-bottom: 1px solid #a9a9a9;
   min-height: 244px;
+  overflow: auto;
+}
+
+.ventas-ui__table-row {
+  appearance: none;
+  border: none;
+  border-bottom: 1px solid #c2c2c2;
+  background: #eeeeee;
+  width: 100%;
+  min-height: 38px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 12% 25% repeat(6, 2%) 10% 12% 15% 16%;
+  color: #222222;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ventas-ui__table-row:hover,
+.ventas-ui__table-row--active {
+  background: #dcebf5;
+}
+
+.ventas-ui__body-cell {
+  min-width: 0;
+  padding: 5px 6px;
+  border-right: 1px solid #c4c4c4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
+.ventas-ui__body-cell:last-child {
+  border-right: none;
+}
+
+.ventas-ui__col--descripcion {
+  justify-content: flex-start;
+  gap: 5px;
+}
+
+.ventas-ui__body-cell strong,
+.ventas-ui__body-cell small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ventas-ui__body-cell strong {
+  color: #044f82;
+}
+
+.ventas-ui__body-cell small {
+  color: #626262;
 }
 
 .ventas-ui__summary-block {
