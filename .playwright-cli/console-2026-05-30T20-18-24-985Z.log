@@ -1,1 +1,12 @@
 [     221ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3001/static/js/bundle.js:24376
+[102932075ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3001/main.5fdd4aa4f2de167a20ef.hot-update.json:0
+[102932787ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:3001/ws' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3001/static/js/bundle.js:37135
+[102934825ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:3001/ws' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3001/static/js/bundle.js:37135
+[102938840ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:3001/ws' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3001/static/js/bundle.js:37135
+[102946937ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:3001/ws' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3001/static/js/bundle.js:37135
+[102962984ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:3001/ws' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3001/static/js/bundle.js:37135
+[102994997ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:3001/ws' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3001/static/js/bundle.js:37135
+[103059058ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:3001/ws' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3001/static/js/bundle.js:37135
+[103187138ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:3001/ws' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3001/static/js/bundle.js:37135
+[103443209ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:3001/ws' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3001/static/js/bundle.js:37135
+[103955251ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:3001/ws' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3001/static/js/bundle.js:37135

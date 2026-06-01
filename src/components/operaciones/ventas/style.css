@@ -571,6 +571,109 @@
   font-weight: 700;
 }
 
+.ventas-ui__hold-modal-body {
+  background: #e7e7e7;
+}
+
+.ventas-ui__hold-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
+.ventas-ui__hold-list {
+  display: grid;
+  gap: 8px;
+}
+
+.ventas-ui__hold-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 120px auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid #b7b7b7;
+  background: #f4f4f4;
+}
+
+.ventas-ui__hold-copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.ventas-ui__hold-copy strong,
+.ventas-ui__hold-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ventas-ui__hold-copy strong {
+  color: #044f82;
+  font-size: 14px;
+}
+
+.ventas-ui__hold-copy span {
+  color: #3f3f3f;
+  font-size: 12px;
+}
+
+.ventas-ui__hold-total {
+  color: #1f1f1f;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.ventas-ui__hold-item-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.ventas-ui__hold-primary-button,
+.ventas-ui__hold-secondary-button,
+.ventas-ui__hold-danger-button {
+  min-height: 30px;
+  border: 1px solid #9f9f9f;
+  background: #ffffff;
+  color: #222222;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ventas-ui__hold-primary-button {
+  padding: 0 14px;
+  background: #626262;
+  color: #ffffff;
+}
+
+.ventas-ui__hold-secondary-button,
+.ventas-ui__hold-danger-button {
+  padding: 0 10px;
+}
+
+.ventas-ui__hold-secondary-button:hover,
+.ventas-ui__hold-primary-button:hover {
+  background: #dcebf5;
+  color: #044f82;
+}
+
+.ventas-ui__hold-danger-button:hover {
+  background: #f7dada;
+  color: #9c1111;
+}
+
+.ventas-ui__hold-empty {
+  margin: 0;
+  padding: 18px;
+  border: 1px solid #b7b7b7;
+  background: #f4f4f4;
+  color: #3f3f3f;
+  text-align: center;
+}
+
 @media (max-width: 1280px) {
   .ventas-ui__input--client {
     width: 390px;

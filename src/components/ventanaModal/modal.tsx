@@ -67,6 +67,7 @@ export const Modal = ({
       role='presentation'
     >
       <div
+        aria-label={title}
         aria-modal='true'
         className={`modal-base ${className}`.trim()}
         onClick={handleDialogClick}

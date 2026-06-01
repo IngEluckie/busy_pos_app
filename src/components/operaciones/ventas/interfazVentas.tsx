@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { getStoredCashRegisterName } from '../../../context/cashRegisterStorage'
 import { useSession } from '../../../context/SessionContext'
+import { Modal } from '../../ventanaModal/modal'
 import './style.css'
 
 type ActionButton = {
@@ -63,6 +65,35 @@ type SaleLineItem = SaleProductSearchItem & {
   activeImageIndex: number
 }
 
+type HeldSaleCustomer = {
+  id: string | null
+  displayName: string
+}
+
+type HeldSaleSeller = {
+  id: number | null
+  username: string | null
+  fullname: string
+  displayName: string
+  source: 'authenticated_user' | 'manual'
+}
+
+type HeldSale = {
+  id: string
+  status: 'on_hold'
+  createdAt: string
+  cashRegister: { name: string | null }
+  seller: HeldSaleSeller | null
+  customer: HeldSaleCustomer
+  currency: { code: 'MXN'; exchangeRate: 1 }
+  items: SaleLineItem[]
+  totals: {
+    subtotal: number
+    discountTotal: number
+    grandTotal: number
+  }
+}
+
 type Customer = {
   id: string
   userId: number | null
@@ -85,6 +116,9 @@ type CustomerListResponse = {
   limit: number
   total: number
 }
+
+export const HELD_SALES_STORAGE_KEY = 'busy_pos_held_sales_v1'
+const DEFAULT_CUSTOMER_NAME = 'Público en General'
 
 const topActions: ActionButton[] = [
   { id: 'buscar', label: 'Buscar', shortcut: '(F2)', icon: '🔎' },
@@ -133,6 +167,82 @@ const formatCurrency = (value: number, currency = 'MXN') => (
     currency,
   }).format(value)
 )
+
+const formatHeldSaleDate = (value: string) => (
+  new Intl.DateTimeFormat('es-MX', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value))
+)
+
+const readHeldSales = (): HeldSale[] => {
+  const rawHeldSales = localStorage.getItem(HELD_SALES_STORAGE_KEY)
+
+  if (!rawHeldSales) {
+    return []
+  }
+
+  try {
+    const parsedHeldSales = JSON.parse(rawHeldSales)
+
+    if (!Array.isArray(parsedHeldSales)) {
+      return []
+    }
+
+    return parsedHeldSales.filter((sale): sale is HeldSale => (
+      sale
+      && typeof sale === 'object'
+      && sale.status === 'on_hold'
+      && typeof sale.id === 'string'
+      && Array.isArray(sale.items)
+      && sale.totals
+      && typeof sale.totals.grandTotal === 'number'
+    ))
+  } catch {
+    return []
+  }
+}
+
+const writeHeldSales = (heldSales: HeldSale[]) => {
+  localStorage.setItem(HELD_SALES_STORAGE_KEY, JSON.stringify(heldSales))
+}
+
+const createHeldSaleId = () => (
+  `hold_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+)
+
+const getUserSellerName = (user: ReturnType<typeof useSession>['user']) => (
+  user?.fullname || user?.username || ''
+)
+
+const getHeldSaleUnitsCount = (heldSale: HeldSale) => (
+  heldSale.items.reduce((total, item) => total + item.saleQuantity, 0)
+)
+
+const createCustomerFromHeldSale = (customer: HeldSaleCustomer): Customer | null => {
+  if (!customer.id) {
+    return null
+  }
+
+  return {
+    id: customer.id,
+    userId: null,
+    displayName: customer.displayName,
+    cellphone: null,
+    email: null,
+    rfc: null,
+    address: null,
+    taxRegime: null,
+    credit: 0,
+    notes: '',
+    isActive: true,
+    createdAt: '',
+    updatedAt: '',
+  }
+}
 
 const getLineIdentity = (product: Pick<SaleProductSearchItem, 'productId' | 'variationId'>) => (
   `${product.productId}:${product.variationId ?? 'simple'}`
@@ -243,19 +353,24 @@ export const InterfazVentas = () => {
     apiBaseUrl,
     isBootstrapping,
     tokenType,
+    user,
   } = useSession()
+  const authenticatedSellerName = getUserSellerName(user)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<SaleProductSearchItem[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
-  const [customerSearchQuery, setCustomerSearchQuery] = useState('Público en General')
+  const [customerSearchQuery, setCustomerSearchQuery] = useState(DEFAULT_CUSTOMER_NAME)
+  const [sellerName, setSellerName] = useState(authenticatedSellerName)
   const [customerSearchResults, setCustomerSearchResults] = useState<Customer[]>([])
   const [isSearchingCustomers, setIsSearchingCustomers] = useState(false)
   const [customerSearchError, setCustomerSearchError] = useState<string | null>(null)
   const [isCustomerSearchFocused, setIsCustomerSearchFocused] = useState(false)
   const [saleItems, setSaleItems] = useState<SaleLineItem[]>([])
   const [activeLineId, setActiveLineId] = useState<string | null>(null)
+  const [heldSales, setHeldSales] = useState<HeldSale[]>(() => readHeldSales())
+  const [isHeldSalesModalOpen, setIsHeldSalesModalOpen] = useState(false)
   const [imageObjectUrls, setImageObjectUrls] = useState<Record<string, string>>({})
   const requestedImageIdsRef = useRef(new Set<string>())
   const fetchedObjectUrlsRef = useRef<string[]>([])
@@ -279,8 +394,135 @@ export const InterfazVentas = () => {
     isCustomerSearchFocused
     && trimmedCustomerSearchQuery
     && (!selectedCustomer || trimmedCustomerSearchQuery !== selectedCustomer.displayName)
-    && trimmedCustomerSearchQuery !== 'Público en General'
+    && trimmedCustomerSearchQuery !== DEFAULT_CUSTOMER_NAME
   )
+
+  const clearSaleInterface = useCallback(() => {
+    setSearchQuery('')
+    setSearchResults([])
+    setIsSearching(false)
+    setSearchError(null)
+    setSelectedCustomer(null)
+    setCustomerSearchQuery(DEFAULT_CUSTOMER_NAME)
+    setSellerName(authenticatedSellerName)
+    setCustomerSearchResults([])
+    setIsSearchingCustomers(false)
+    setCustomerSearchError(null)
+    setIsCustomerSearchFocused(false)
+    setSaleItems([])
+    setActiveLineId(null)
+  }, [authenticatedSellerName])
+
+  const syncHeldSales = useCallback((nextHeldSales: HeldSale[]) => {
+    setHeldSales(nextHeldSales)
+    writeHeldSales(nextHeldSales)
+  }, [])
+
+  const createHeldSaleFromCurrentSale = useCallback((): HeldSale => {
+    const customerDisplayName = selectedCustomer?.displayName || trimmedCustomerSearchQuery || DEFAULT_CUSTOMER_NAME
+    const trimmedSellerName = sellerName.trim()
+    const isAuthenticatedSeller = Boolean(user && trimmedSellerName === authenticatedSellerName)
+    const authenticatedSeller = isAuthenticatedSeller ? user : null
+
+    return {
+      id: createHeldSaleId(),
+      status: 'on_hold',
+      createdAt: new Date().toISOString(),
+      cashRegister: {
+        name: getStoredCashRegisterName(),
+      },
+      seller: trimmedSellerName
+        ? {
+            id: authenticatedSeller?.id ?? null,
+            username: authenticatedSeller?.username ?? null,
+            fullname: authenticatedSeller?.fullname ?? trimmedSellerName,
+            displayName: trimmedSellerName,
+            source: isAuthenticatedSeller ? 'authenticated_user' : 'manual',
+          }
+        : null,
+      customer: {
+        id: selectedCustomer?.id ?? null,
+        displayName: customerDisplayName,
+      },
+      currency: {
+        code: 'MXN',
+        exchangeRate: 1,
+      },
+      items: saleItems,
+      totals: {
+        subtotal: ticketTotal,
+        discountTotal: 0,
+        grandTotal: ticketTotal,
+      },
+    }
+  }, [authenticatedSellerName, saleItems, selectedCustomer, sellerName, ticketTotal, trimmedCustomerSearchQuery, user])
+
+  const handleHoldSale = useCallback(() => {
+    const storedHeldSales = readHeldSales()
+
+    if (saleItems.length === 0) {
+      setHeldSales(storedHeldSales)
+
+      if (storedHeldSales.length > 0) {
+        setIsHeldSalesModalOpen(true)
+      }
+
+      return
+    }
+
+    const nextHeldSales = [...storedHeldSales, createHeldSaleFromCurrentSale()]
+    syncHeldSales(nextHeldSales)
+
+    if (storedHeldSales.length === 0) {
+      clearSaleInterface()
+      return
+    }
+
+    setIsHeldSalesModalOpen(true)
+  }, [clearSaleInterface, createHeldSaleFromCurrentSale, saleItems.length, syncHeldSales])
+
+  const handleNewSaleFromHoldModal = () => {
+    clearSaleInterface()
+    setIsHeldSalesModalOpen(false)
+  }
+
+  const handleRestoreHeldSale = (heldSale: HeldSale) => {
+    const nextHeldSales = heldSales.filter((currentSale) => currentSale.id !== heldSale.id)
+    syncHeldSales(nextHeldSales)
+    setSaleItems(heldSale.items)
+    setActiveLineId(heldSale.items[heldSale.items.length - 1]?.lineId ?? null)
+    setSelectedCustomer(createCustomerFromHeldSale(heldSale.customer))
+    setCustomerSearchQuery(heldSale.customer.displayName || DEFAULT_CUSTOMER_NAME)
+    setSellerName(heldSale.seller?.displayName || heldSale.seller?.fullname || authenticatedSellerName)
+    setCustomerSearchResults([])
+    setCustomerSearchError(null)
+    setIsSearchingCustomers(false)
+    setIsCustomerSearchFocused(false)
+    setSearchQuery('')
+    setSearchResults([])
+    setSearchError(null)
+    setIsSearching(false)
+    setIsHeldSalesModalOpen(false)
+  }
+
+  const handleResetSeller = () => {
+    setSellerName(authenticatedSellerName)
+  }
+
+  const handleDeleteHeldSale = (heldSaleId: string) => {
+    const nextHeldSales = heldSales.filter((heldSale) => heldSale.id !== heldSaleId)
+    syncHeldSales(nextHeldSales)
+
+    if (nextHeldSales.length === 0) {
+      setIsHeldSalesModalOpen(false)
+    }
+  }
+
+  useEffect(() => {
+    if (authenticatedSellerName && !sellerName.trim()) {
+      setSellerName(authenticatedSellerName)
+    }
+  }, [authenticatedSellerName, sellerName])
 
   const handleSelectProduct = useCallback((product: SaleProductSearchItem) => {
     const identity = getLineIdentity(product)
@@ -363,7 +605,7 @@ export const InterfazVentas = () => {
       setIsSearchingCustomers(false)
 
       if (!selectedCustomer && !customerSearchQuery.trim()) {
-        setCustomerSearchQuery('Público en General')
+        setCustomerSearchQuery(DEFAULT_CUSTOMER_NAME)
       }
     }, 120)
   }
@@ -371,7 +613,7 @@ export const InterfazVentas = () => {
   const handleCustomerSearchFocus = () => {
     setIsCustomerSearchFocused(true)
 
-    if (!selectedCustomer && customerSearchQuery === 'Público en General') {
+    if (!selectedCustomer && customerSearchQuery === DEFAULT_CUSTOMER_NAME) {
       setCustomerSearchQuery('')
     }
   }
@@ -447,7 +689,7 @@ export const InterfazVentas = () => {
       isBootstrapping
       || !isCustomerSearchFocused
       || !trimmedCustomerSearchQuery
-      || trimmedCustomerSearchQuery === 'Público en General'
+      || trimmedCustomerSearchQuery === DEFAULT_CUSTOMER_NAME
       || (selectedCustomer && trimmedCustomerSearchQuery === selectedCustomer.displayName)
     ) {
       setCustomerSearchResults([])
@@ -578,7 +820,12 @@ export const InterfazVentas = () => {
       <div className='ventas-ui__main'>
         <aside className='ventas-ui__sidebar'>
           {sideActions.map((action) => (
-            <button key={action.id} className='ventas-ui__side-action' type='button'>
+            <button
+              key={action.id}
+              className='ventas-ui__side-action'
+              onClick={action.id === 'espera' ? handleHoldSale : undefined}
+              type='button'
+            >
               <span className='ventas-ui__side-icon' aria-hidden='true'>
                 {action.icon}
               </span>
@@ -754,8 +1001,15 @@ export const InterfazVentas = () => {
                 <span className='ventas-ui__field-symbol' aria-hidden='true'>
                   🧍
                 </span>
-                <input className='ventas-ui__input ventas-ui__input--extra' type='text' />
-                <button className='ventas-ui__tiny-btn' type='button'>
+                <input
+                  aria-label='Vendedor'
+                  className='ventas-ui__input ventas-ui__input--extra'
+                  onChange={(event) => setSellerName(event.target.value)}
+                  placeholder='Vendedor'
+                  type='text'
+                  value={sellerName}
+                />
+                <button className='ventas-ui__tiny-btn' onClick={handleResetSeller} type='button'>
                   ⛔
                 </button>
               </div>
@@ -837,6 +1091,66 @@ export const InterfazVentas = () => {
           </section>
         </div>
       </div>
+
+      <Modal
+        isOpen={isHeldSalesModalOpen}
+        onClose={() => setIsHeldSalesModalOpen(false)}
+        title='Ventas en espera'
+        width='min(92vw, 760px)'
+        bodyClassName='ventas-ui__hold-modal-body'
+      >
+        <div className='ventas-ui__hold-actions'>
+          <button
+            className='ventas-ui__hold-primary-button'
+            onClick={handleNewSaleFromHoldModal}
+            type='button'
+          >
+            Nueva venta
+          </button>
+        </div>
+
+        {heldSales.length === 0 ? (
+          <p className='ventas-ui__hold-empty'>No hay ventas en espera.</p>
+        ) : (
+          <div className='ventas-ui__hold-list'>
+            {heldSales.map((heldSale) => (
+              <article className='ventas-ui__hold-item' key={heldSale.id}>
+                <div className='ventas-ui__hold-copy'>
+                  <strong>{heldSale.customer.displayName || DEFAULT_CUSTOMER_NAME}</strong>
+                  <span>{formatHeldSaleDate(heldSale.createdAt)}</span>
+                  <span>
+                    Caja: {heldSale.cashRegister.name || 'Sin caja'} · Vendedor: {heldSale.seller?.displayName || heldSale.seller?.fullname || 'Sin vendedor'}
+                  </span>
+                  <span>
+                    {heldSale.items.length} productos · {getHeldSaleUnitsCount(heldSale)} unidades
+                  </span>
+                </div>
+
+                <div className='ventas-ui__hold-total'>
+                  {formatCurrency(heldSale.totals.grandTotal, heldSale.currency.code)}
+                </div>
+
+                <div className='ventas-ui__hold-item-actions'>
+                  <button
+                    className='ventas-ui__hold-secondary-button'
+                    onClick={() => handleRestoreHeldSale(heldSale)}
+                    type='button'
+                  >
+                    Restaurar
+                  </button>
+                  <button
+                    className='ventas-ui__hold-danger-button'
+                    onClick={() => handleDeleteHeldSale(heldSale.id)}
+                    type='button'
+                  >
+                    Eliminar
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </Modal>
     </section>
   )
 }
